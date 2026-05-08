@@ -57,6 +57,8 @@ vectorstore/
 *.sqlite3
 langgraph.yaml
 .langgraph/
+.langgraph_api/
+*.pckl
 
 # Node (if used)
 node_modules/
