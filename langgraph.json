@@ -1,0 +1,12 @@
+{
+  "graphs": {
+    "taller": {
+      "path": "src.agents.taller.agent:agent",
+      "runnable": true
+    }
+  },
+  "source": {
+    "kind": "uv",
+    "root": "."
+  }
+}

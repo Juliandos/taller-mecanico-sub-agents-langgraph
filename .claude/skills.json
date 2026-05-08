@@ -1,0 +1,25 @@
+{
+  "skills": [
+    {
+      "name": "langgraph-agent",
+      "description": "Crea una estructura base de agente con LangGraph",
+      "command": "python scripts/create_langgraph_agent.py",
+      "categories": ["langgraph", "langchain"],
+      "help": "Genera un archivo agent.py con patrones básicos de LangGraph (Orquestador, Evaluador, React Agent)"
+    },
+    {
+      "name": "langgraph-test",
+      "description": "Prueba el agente en LangGraph Studio",
+      "command": "uv run langgraph dev",
+      "categories": ["langgraph", "testing"],
+      "help": "Inicia el servidor de LangGraph Studio en http://localhost:2024"
+    },
+    {
+      "name": "langgraph-check",
+      "description": "Verifica que el grafo está bien formado",
+      "command": "python scripts/check_graph.py",
+      "categories": ["langgraph", "validation"],
+      "help": "Valida la estructura del grafo de LangGraph"
+    }
+  ]
+}
