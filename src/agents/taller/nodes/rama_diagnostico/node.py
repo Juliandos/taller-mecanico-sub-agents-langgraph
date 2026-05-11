@@ -1,7 +1,22 @@
 """Rama 1: Diagnóstico - React Agent que maneja todo internamente"""
 
 from agents.taller.state import TallerState
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, HumanMessage
+from langchain.chat_models import init_chat_model
+
+# Inicializar LLM para generar respuestas dinámicas
+llm = init_chat_model("openai:gpt-4o", temperature=0.7)
+
+
+def _detectar_intension_agendar(ultimo_mensaje: str) -> bool:
+    """Detecta si el usuario quiere agendar cita directamente."""
+    keywords_agendar = [
+        "cita", "agendar", "agendar cita", "quiero una cita", "necesito una cita",
+        "directamente", "ahora mismo", "lo antes posible", "urgente",
+        "solo quiero agendar", "reservar", "appointment", "schedule"
+    ]
+    msg_clean = ultimo_mensaje.lower().strip()
+    return any(kw in msg_clean for kw in keywords_agendar)
 
 
 def evaluador_pieza_dañada(state: TallerState) -> dict:
@@ -9,7 +24,7 @@ def evaluador_pieza_dañada(state: TallerState) -> dict:
     React Agent para diagnóstico.
     Absorbe: generador_conversacion + evaluador + generar_resumen
 
-    Turno 1 (1 msg humano): Genera pregunta empática
+    Turno 1 (1 msg humano): Detecta intención de agendar o genera pregunta empática
     Turno 2+ (2+ msgs): Decide buscar RAG o generar resumen
     Turno N (confirmación): Valida confirmación del cliente
     """
@@ -54,9 +69,49 @@ def evaluador_pieza_dañada(state: TallerState) -> dict:
     print(f"[EVALUADOR] Palabras confirmación: {confirm_keywords}")
     print(f"[EVALUADOR] ¿Detectó confirmación? {has_confirmation}")
 
-    # TURNO 1: solo preguntar
+    # TURNO 1: Detectar intención o preguntar
     if len(user_messages) == 1:
-        print("[EVALUADOR] ✓ TURNO 1: generando pregunta empática")
+        print("[EVALUADOR] ✓ TURNO 1: analizando intención del cliente")
+
+        # Verificar si quiere agendar directamente
+        if _detectar_intension_agendar(last_msg):
+            print("[EVALUADOR] 🎯 Cliente quiere agendar en primer mensaje, generando respuesta con IA")
+            try:
+                system_msg = """Eres un asistente amable de taller mecánico.
+El cliente quiere agendar una cita directamente, pero necesitamos hacer un diagnóstico primero.
+Genera una respuesta amable que:
+1. Acepte su solicitud de cita
+2. Pida que describa qué problema tiene con su auto
+3. Explique que necesitamos el diagnóstico primero antes de agendar
+
+Sé natural, amable y profesional."""
+
+                respuesta = llm.invoke([
+                    ("system", system_msg),
+                    ("human", last_msg)
+                ])
+                respuesta_texto = respuesta.content if hasattr(respuesta, 'content') else str(respuesta)
+
+                result = {
+                    "messages": [AIMessage(content=respuesta_texto)],
+                    "diagnostico_decision": "ir_a_agregador",
+                    "diagnostico_summary": respuesta_texto,
+                }
+                print(f"[EVALUADOR] Retornando: {list(result.keys())}")
+                return result
+            except Exception as e:
+                print(f"[EVALUADOR] ❌ Error generando respuesta: {e}")
+                # Fallback a respuesta genérica
+                fallback = "Claro, con gusto te agendo una cita. Pero primero, ¿qué problema tiene tu auto? Así hago un diagnóstico antes de agendar."
+                result = {
+                    "messages": [AIMessage(content=fallback)],
+                    "diagnostico_decision": "ir_a_agregador",
+                    "diagnostico_summary": fallback,
+                }
+                return result
+
+        # Si no quiere agendar directamente, hacer preguntas diagnósticas normales
+        print("[EVALUADOR] 📋 Cliente menciona un problema, haciendo preguntas diagnósticas")
         pregunta = """Entiendo tu problema. Permíteme hacer algunas preguntas para diagnosticar mejor:
 
 1. ¿Cuándo comenzó a ocurrir este problema?
@@ -76,6 +131,29 @@ Con esta información podré identificar qué pieza o servicio necesitas."""
     # TURNO 2+: decidir si buscar RAG o generar resumen
     if len(user_messages) >= 2:
         print(f"[EVALUADOR] ✓ TURNO 2+: ({len(user_messages)} mensajes humanos)")
+
+        # Verificar si el cliente VUELVE A INSISTIR sobre la cita en el segundo mensaje
+        # Si quiso agendar en TURNO 1 y vuelve a insistir, crear diagnóstico general
+        if len(user_messages) == 2 and _detectar_intension_agendar(last_msg):
+            print("[EVALUADOR] 🎯 Cliente insiste en cita en segundo mensaje → Diagnóstico general")
+            resumen_general = """✅ DIAGNÓSTICO GENERAL PROGRAMADO
+━━━━━━━━━━━━━━━━━━━━━
+Entendido, procederemos con una cita de diagnóstico general.
+
+En esta cita nuestros mecánicos realizarán una revisión completa de tu vehículo para identificar cualquier problema o necesidad de mantenimiento.
+
+¿Cuándo te gustaría agendar la cita? (ej: mañana, próxima semana, día específico)"""
+
+            result = {
+                "messages": [AIMessage(content=resumen_general)],
+                "diagnostico_decision": "ir_a_agregador",
+                "diagnostico_summary": resumen_general,
+                "diagnosis_complete": True,
+                "damaged_part": "Diagnóstico general (sin pieza específica identificada)",
+                "client_confirmed_diagnosis": True,
+            }
+            print(f"[EVALUADOR] Retornando: {list(result.keys())}")
+            return result
 
         # PRIORIDAD 1: Si diagnóstico completo y cliente confirma → aceptar diagnóstico
         if diagnosis_complete and has_confirmation and client_confirmed_diagnosis == False:
