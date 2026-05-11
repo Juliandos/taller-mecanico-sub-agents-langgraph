@@ -22,6 +22,26 @@ def _normalizar_texto(texto: str) -> str:
     return texto
 
 
+def _extract_content(content) -> str:
+    """Extrae texto de content que puede ser string, list (multimodal), o message object."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        # Multimodal format: [{'type': 'text', 'text': '...'}, ...]
+        text_parts = []
+        for item in content:
+            if isinstance(item, dict):
+                if item.get('type') == 'text' and 'text' in item:
+                    text_parts.append(item['text'])
+                elif item.get('type') == 'text_block' and 'text' in item:
+                    text_parts.append(item['text'])
+        return " ".join(text_parts) if text_parts else ""
+    if hasattr(content, 'content'):
+        # Message object
+        return _extract_content(content.content)
+    return ""
+
+
 def _detectar_palabra_clave(texto: str, palabras_clave: list) -> bool:
     """Detecta palabras clave con soporte para regex, tildes, espacios variables."""
     texto_norm = _normalizar_texto(texto)
@@ -182,9 +202,9 @@ def evaluador_pieza_dañada(state: TallerState) -> dict:
     if messages:
         last = messages[-1]
         if isinstance(last, dict):
-            last_msg = str(last.get("content", "")).lower()
+            last_msg = _extract_content(last.get("content", "")).lower()
         else:
-            last_msg = str(last.content).lower() if hasattr(last, "content") else ""
+            last_msg = _extract_content(last.content).lower() if hasattr(last, "content") else ""
 
     print(f"[EVALUADOR] Último mensaje: '{last_msg}'")
 
@@ -342,7 +362,7 @@ Sé conversacional y cálido, no formal. No uses formatos con emojis o líneas, 
 
             # Extraer síntomas de los mensajes del cliente
             sintomas = " ".join([
-                m.get("content", "") if isinstance(m, dict) else (m.content if hasattr(m, "content") else "")
+                _extract_content(m.get("content", "") if isinstance(m, dict) else (m.content if hasattr(m, "content") else ""))
                 for m in messages if isinstance(m, dict) and m.get("type") == "human" or (hasattr(m, "type") and m.type == "human")
             ])
 
@@ -379,7 +399,7 @@ Sé conversacional y cálido, no formal. No uses formatos con emojis o líneas, 
             if not diagnosis_complete and rag_context:
                 print("[EVALUADOR] 💡 CASO B: Sin diagnóstico + rag_context → GENERAR DIAGNÓSTICO")
                 sintomas = " ".join([
-                    m.get("content", "") if isinstance(m, dict) else (m.content if hasattr(m, "content") else "")
+                    _extract_content(m.get("content", "") if isinstance(m, dict) else (m.content if hasattr(m, "content") else ""))
                     for m in messages if isinstance(m, dict) and m.get("type") == "human" or (hasattr(m, "type") and m.type == "human")
                 ])
                 resumen = _generar_diagnostico_basado_en_sintomas(sintomas, rag_context)
@@ -404,7 +424,7 @@ Sé conversacional y cálido, no formal. No uses formatos con emojis o líneas, 
                 if rag_context:
                     print(f"[EVALUADOR] 📊 Regenerando diagnóstico refinado ({rag_calls}/3)")
                     sintomas = " ".join([
-                        m.get("content", "") if isinstance(m, dict) else (m.content if hasattr(m, "content") else "")
+                        _extract_content(m.get("content", "") if isinstance(m, dict) else (m.content if hasattr(m, "content") else ""))
                         for m in messages if isinstance(m, dict) and m.get("type") == "human" or (hasattr(m, "type") and m.type == "human")
                     ])
 
@@ -450,7 +470,7 @@ Sé profesional pero natural. No uses emojis ni formatos especiales."""
             else:
                 print("[EVALUADOR] ⛔ CASO D: Alcanzó máx búsquedas")
                 sintomas = " ".join([
-                    m.get("content", "") if isinstance(m, dict) else (m.content if hasattr(m, "content") else "")
+                    _extract_content(m.get("content", "") if isinstance(m, dict) else (m.content if hasattr(m, "content") else ""))
                     for m in messages if isinstance(m, dict) and m.get("type") == "human" or (hasattr(m, "type") and m.type == "human")
                 ])
 
@@ -495,10 +515,10 @@ def buscar_rag_mecanica(state: TallerState) -> dict:
     if not sintoma and messages:
         for m in reversed(messages):
             if isinstance(m, dict) and m.get("type") == "human":
-                sintoma = m.get("content", "")
+                sintoma = _extract_content(m.get("content", ""))
                 break
             elif hasattr(m, "type") and m.type == "human":
-                sintoma = m.content
+                sintoma = _extract_content(m.content)
                 break
 
     print(f"[BUSCAR_RAG] Consultando pgvector: '{sintoma[:60]}'")
