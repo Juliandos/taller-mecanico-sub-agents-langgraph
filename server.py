@@ -165,27 +165,25 @@ class ChatHandler(http.server.SimpleHTTPRequestHandler):
         messages = result.get("messages", [])
         print(f"[CHAT] Total mensajes: {len(messages)}")
 
-        # Buscar el último mensaje del asistente (no del usuario)
-        for msg in reversed(messages):
+        # Filtrar solo los últimos mensajes (últimos 10) para evitar mensajes antiguos acumulados
+        recent_messages = messages[-10:] if len(messages) > 10 else messages
+
+        # Buscar el ÚLTIMO mensaje del asistente (tipo 'ai') en los mensajes recientes
+        ai_messages = []
+        for msg in recent_messages:
             msg_type = msg.get("type", "").lower() if isinstance(msg, dict) else getattr(msg, "type", "").lower()
             content = msg.get("content", "") if isinstance(msg, dict) else getattr(msg, "content", "")
 
-            print(f"[CHAT] Mensaje encontrado: type={msg_type}, len={len(str(content))}")
+            if msg_type == "ai" and content and isinstance(content, str) and len(content) > 10:
+                ai_messages.append((msg_type, content))
 
-            if msg_type not in ["human", "user"] and content:
-                print(f"[CHAT] ✅ Usando mensaje de tipo '{msg_type}'")
-                return content
+        print(f"[CHAT] Mensajes AI encontrados (últimos): {len(ai_messages)}")
 
-        # Si no hay mensajes, buscar en otros campos
-        diagnostico = result.get("diagnostico_summary", "")
-        if diagnostico:
-            print(f"[CHAT] ✅ Usando diagnostico_summary")
-            return diagnostico
-
-        appointment = result.get("appointment_summary", "")
-        if appointment:
-            print(f"[CHAT] ✅ Usando appointment_summary")
-            return appointment
+        if ai_messages:
+            # Tomar el ÚLTIMO mensaje de AI (más reciente)
+            msg_type, content = ai_messages[-1]
+            print(f"[CHAT] ✅ Usando último mensaje de tipo '{msg_type}', len={len(content)}")
+            return content
 
         return None
 

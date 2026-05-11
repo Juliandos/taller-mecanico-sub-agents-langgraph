@@ -20,6 +20,12 @@ def booking_agent(state) -> dict:
     preferred_date = appointment_data.get("preferred_date", "próximos días")
     preferred_time = appointment_data.get("preferred_time", "horario disponible")
 
+    # Obtener mecánico seleccionado o usar el recomendado
+    mecanicos = state.get("mecanicos_disponibles", [])
+    selected_mechanic = state.get("selected_mechanic", "")
+    mechanic_name = selected_mechanic if selected_mechanic else (mecanicos[0]["nombre"] if mecanicos else "Juan García")
+    mechanic_area = state.get("selected_area", "Diagnóstico")
+
     print(f"[BOOKING_AGENT] Agendando cita para {customer_name} ({phone})")
 
     try:
@@ -49,7 +55,7 @@ def booking_agent(state) -> dict:
 📅 Fecha: {appointment_date}
 🕐 Hora: {appointment_time}
 🔧 Servicio: {service}
-👨‍🔧 Mecánico: Juan García
+👨‍🔧 Mecánico: {mechanic_name}
 💰 Costo estimado: $180,000-350,000
 
 ⚠️ INSTRUCCIONES:

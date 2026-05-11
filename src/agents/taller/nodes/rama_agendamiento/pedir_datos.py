@@ -27,6 +27,7 @@ def pedir_datos_faltantes(state: TallerState) -> dict:
     hora_fuera_horario = "preferred_time_invalid" in missing_fields
     fecha_es_festivo = any(f.startswith("preferred_date_holiday:") for f in missing_fields)
     necesita_hora_especifica = any(f.startswith("time_period:") for f in missing_fields)
+    necesita_seleccion_mecanico = "select_mechanic" in missing_fields
 
     disponibilidad_consultada = bool(state.get("disponibilidad_context", ""))
 
@@ -93,7 +94,23 @@ def pedir_datos_faltantes(state: TallerState) -> dict:
 """
 
     # Crear mensaje pidiendo los datos faltantes
-    if fecha_es_festivo:
+    if necesita_seleccion_mecanico:
+        # Mostrar lista de mecánicos disponibles
+        mecanicos = state.get("mecanicos_disponibles", [])
+        if mecanicos:
+            mecanicos_text = "\n".join([
+                f"   {i}. {m['nombre']} ({m['especialidad']})"
+                for i, m in enumerate(mecanicos, 1)
+            ])
+            ask_msg = f"""¿Con cuál mecánico prefieres trabajar?
+
+{mecanicos_text}
+
+Responde con el número (1-5) o di "cualquiera" si cualquiera de ellos te parece bien."""
+        else:
+            ask_msg = "¿Con cuál mecánico prefieres trabajar? Responde con el número o nombre del mecánico."
+
+    elif fecha_es_festivo:
         # La fecha seleccionada es festivo
         ask_msg = f"""Lo siento, este día es festivo ({holiday_name}) y estamos cerrados.{disponibilidad_texto}
 

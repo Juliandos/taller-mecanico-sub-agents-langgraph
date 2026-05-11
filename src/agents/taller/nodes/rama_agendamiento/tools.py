@@ -84,11 +84,18 @@ def consultar_disponibilidad(fecha: str, hora: str):
     }
 
 
-def crear_cita(cliente_nombre: str, cliente_telefono: str, fecha: str, hora: str, area_servicio: str):
+def crear_cita(cliente_nombre: str, cliente_telefono: str, fecha: str, hora: str, area_servicio: str, mecanico_nombre: str = "Juan García"):
     """Crea la cita con todos los datos."""
-    print(f"[TOOL] crear_cita({cliente_nombre}, {fecha}, {hora})")
+    print(f"[TOOL] crear_cita({cliente_nombre}, {fecha}, {hora}, {mecanico_nombre})")
     import random
     confirmation_id = f"TM-{random.randint(10000, 99999)}"
+
+    # Buscar especialidad del mecánico si es posible
+    especialidad = "Motor, suspensión"
+    for m in TALLER_DATA.get("mecanicos", []):
+        if m["nombre"] == mecanico_nombre:
+            especialidad = m["especialidad"]
+            break
 
     return {
         "confirmacion_id": confirmation_id,
@@ -97,8 +104,8 @@ def crear_cita(cliente_nombre: str, cliente_telefono: str, fecha: str, hora: str
         "fecha": fecha,
         "hora": hora,
         "area_servicio": area_servicio,
-        "mecanico": "Juan García",
-        "especialidad": "Motor, suspensión",
+        "mecanico": mecanico_nombre,
+        "especialidad": especialidad,
         "costo_estimado": "$150,000-350,000",
         "exito": True
     }

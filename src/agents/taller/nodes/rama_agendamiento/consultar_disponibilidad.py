@@ -44,6 +44,12 @@ def consultar_disponibilidad_taller(state: TallerState) -> dict:
         for date, formatted, available in available_dates[:10]  # Mostrar primeras 10
     ])
 
+    # Construir pregunta de selección de mecánico
+    mecanicos_numerados = "\n".join([
+        f"   {i}. {m['nombre']} ({m['especialidad']})"
+        for i, m in enumerate(mechanics, 1)
+    ])
+
     # Construir respuesta formateada
     disponibilidad_info = f"""
 ╔════════════════════════════════════════════════════════════╗
@@ -66,6 +72,13 @@ def consultar_disponibilidad_taller(state: TallerState) -> dict:
 {dates_info}
 
 💡 Nota: El Lunes 18 de mayo es festivo (Lunes de Pentecostés) - CERRADO
+
+---
+
+👨‍🔧 ¿CON CUÁL MECÁNICO TE GUSTARÍA TRABAJAR?
+{mecanicos_numerados}
+
+Responde con el número (1-5) o di "cualquiera" / "está bien" si te parece bien el recomendado.
 """
 
     print(f"[CONSULTAR_DISPONIBILIDAD] ✅ Información recuperada")

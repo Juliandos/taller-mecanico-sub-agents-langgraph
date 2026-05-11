@@ -43,3 +43,7 @@ class TallerState(TypedDict):
     requires_human: bool
     human_transfer_requests: int  # Contador de cuántas veces solicita transferencia a humano
     booking_confirmed: bool
+
+    # Selección de mecánico y área de servicio
+    selected_mechanic: str  # Nombre del mecánico elegido (vacío = usar recomendado)
+    selected_area: str  # Nombre del área elegida (vacío = usar "Diagnóstico")

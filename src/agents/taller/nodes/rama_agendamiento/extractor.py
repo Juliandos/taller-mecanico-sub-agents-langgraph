@@ -149,6 +149,64 @@ def _validar_hora_laboral(hora_str: str, fecha_str: str = "") -> tuple:
 
     return (True, "valid", "")
 
+
+def _detectar_seleccion_mecanico(last_human_msg: str, mechanics_list: list) -> tuple:
+    """
+    Detecta si el usuario seleccionó un mecánico sin usar LLM.
+    Retorna (nombre_mecanico, "Diagnóstico") o (None, None) si no detecta selección.
+    """
+    if not last_human_msg or not mechanics_list:
+        return (None, None)
+
+    # Manejar mensajes multimodales (pueden ser listas de dicts)
+    if isinstance(last_human_msg, list):
+        text_content = ""
+        for item in last_human_msg:
+            if isinstance(item, dict) and item.get("type") == "text":
+                text_content = item.get("text", "")
+                break
+        last_human_msg = text_content
+
+    if not last_human_msg:
+        return (None, None)
+
+    msg_lower = str(last_human_msg).lower().strip()
+    msg_lower = msg_lower.replace("á", "a").replace("é", "e").replace("í", "i").replace("ó", "o").replace("ú", "u")
+
+    # Palabras de aceptación (selecciona el primero/recomendado)
+    accept_keywords = [
+        "cualquiera", "ok", "bien", "esta bien", "el recomendado", "el primero",
+        "me parece bien", "esta ok", "listo", "vale", "claro", "me gusta", "perfecto"
+    ]
+    for keyword in accept_keywords:
+        if keyword in msg_lower:
+            first_mechanic = mechanics_list[0]["nombre"] if mechanics_list else "Juan García"
+            return (first_mechanic, "Diagnóstico")
+
+    # Detectar números (1-5)
+    numero_patterns = [
+        (r"\b1\b", 0), (r"\buno\b", 0),
+        (r"\b2\b", 1), (r"\bdos\b", 1),
+        (r"\b3\b", 2), (r"\btres\b", 2),
+        (r"\b4\b", 3), (r"\bcuatro\b", 3),
+        (r"\b5\b", 4), (r"\bcinco\b", 4),
+    ]
+    for pattern, idx in numero_patterns:
+        if re.search(pattern, msg_lower):
+            if idx < len(mechanics_list):
+                return (mechanics_list[idx]["nombre"], "Diagnóstico")
+
+    # Detectar nombres de mecánicos
+    mechanic_names = ["juan", "maria", "carlos", "ana", "roberto"]
+    for mech in mechanics_list:
+        first_name = mech["nombre"].split()[0].lower()
+        first_name = first_name.replace("á", "a").replace("é", "e").replace("í", "i").replace("ó", "o").replace("ú", "u")
+        if first_name in msg_lower or mech["nombre"].lower() in msg_lower:
+            return (mech["nombre"], "Diagnóstico")
+
+    return (None, None)
+
+
 def extractor_datos(state: TallerState) -> dict:
     """
     Extrae datos de agendamiento del cliente usando LLM estructurado.
@@ -169,8 +227,70 @@ def extractor_datos(state: TallerState) -> dict:
 
     if customer_name and phone and preferred_date and preferred_time:
         print("[EXTRACTOR_DATOS] ✓ Datos ya completos")
+
+        # Detectar selección de mecánico incluso si los datos básicos están completos
+        selected_mechanic = state.get("selected_mechanic", "")
+        selected_area = state.get("selected_area", "")
+        mecanicos_disponibles = state.get("mecanicos_disponibles", [])
+        missing_fields = []
+
+        if mecanicos_disponibles and not selected_mechanic:
+            # Intentar detectar selección de mecánico del último mensaje
+            last_message = ""
+            if messages:
+                last = messages[-1]
+                if isinstance(last, dict):
+                    last_message = last.get("content", "")
+                elif hasattr(last, "content"):
+                    last_message = last.content
+
+                # Si es multimodal, extraer texto
+                if isinstance(last_message, list):
+                    for item in last_message:
+                        if isinstance(item, dict) and item.get("type") == "text":
+                            last_message = item.get("text", "")
+                            break
+                    else:
+                        # Si no encontramos texto en multimodal, usar vacío
+                        last_message = ""
+                else:
+                    # Asegurar que es string
+                    last_message = str(last_message) if last_message else ""
+
+            detected_mechanic, detected_area = _detectar_seleccion_mecanico(last_message, mecanicos_disponibles)
+
+            if detected_mechanic:
+                selected_mechanic = detected_mechanic
+                selected_area = detected_area or "Diagnóstico"
+                print(f"[EXTRACTOR_DATOS] ✓ Mecánico seleccionado: {selected_mechanic}")
+            else:
+                # Si no detecta selección, pedir que seleccione
+                missing_fields.append("select_mechanic")
+                print(f"[EXTRACTOR_DATOS] ⚠️ Pendiente selección de mecánico")
+
+        # Si falta selección de mecánico, pedir antes de agendar
+        if missing_fields:
+            return {
+                "missing_fields": missing_fields,
+                "customer_name": customer_name,
+                "phone": phone,
+                "selected_mechanic": selected_mechanic,
+                "selected_area": selected_area,
+                "appointment_data": {
+                    "customer_name": customer_name,
+                    "phone": phone,
+                    "preferred_date": preferred_date,
+                    "preferred_time": preferred_time,
+                    "service": damaged_part
+                }
+            }
+
         return {
             "missing_fields": [],
+            "customer_name": customer_name,
+            "phone": phone,
+            "selected_mechanic": selected_mechanic,
+            "selected_area": selected_area,
             "appointment_data": {
                 "customer_name": customer_name,
                 "phone": phone,
@@ -235,6 +355,45 @@ Si NO encuentras algo, retorna un string vacío "" para ese campo. NO uses valor
                 elif error_type == "invalid_hour":
                     missing_fields.append("preferred_time_invalid")
 
+        # Detectar selección de mecánico si disponibilidad ya fue consultada
+        selected_mechanic = state.get("selected_mechanic", "")
+        selected_area = state.get("selected_area", "")
+        mecanicos_disponibles = state.get("mecanicos_disponibles", [])
+
+        if mecanicos_disponibles and not selected_mechanic:
+            # Intentar detectar selección de mecánico del último mensaje
+            last_message = ""
+            if messages:
+                last = messages[-1]
+                if isinstance(last, dict):
+                    last_message = last.get("content", "")
+                elif hasattr(last, "content"):
+                    last_message = last.content
+
+                # Si es multimodal, extraer texto
+                if isinstance(last_message, list):
+                    for item in last_message:
+                        if isinstance(item, dict) and item.get("type") == "text":
+                            last_message = item.get("text", "")
+                            break
+                    else:
+                        # Si no encontramos texto en multimodal, usar vacío
+                        last_message = ""
+                else:
+                    # Asegurar que es string
+                    last_message = str(last_message) if last_message else ""
+
+            detected_mechanic, detected_area = _detectar_seleccion_mecanico(last_message, mecanicos_disponibles)
+
+            if detected_mechanic:
+                selected_mechanic = detected_mechanic
+                selected_area = detected_area or "Diagnóstico"
+                print(f"[EXTRACTOR_DATOS] ✓ Mecánico seleccionado: {selected_mechanic}")
+            elif not missing_fields:
+                # Si tenemos todos los datos básicos pero sin selección de mecánico
+                missing_fields.append("select_mechanic")
+                print(f"[EXTRACTOR_DATOS] ⚠️ Pendiente selección de mecánico")
+
         # Si faltan datos críticos, pedir que se proporcionen
         if missing_fields:
             print(f"[EXTRACTOR_DATOS] ⚠️ Campos faltantes: {missing_fields}")
@@ -246,6 +405,9 @@ Si NO encuentras algo, retorna un string vacío "" para ese campo. NO uses valor
                 result["customer_name"] = schema.customer_name
             if schema.phone and schema.phone.strip():
                 result["phone"] = schema.phone
+            if selected_mechanic:
+                result["selected_mechanic"] = selected_mechanic
+                result["selected_area"] = selected_area
             result["appointment_data"] = {
                 "preferred_date": schema.preferred_date.strip() if schema.preferred_date else "",
                 "preferred_time": schema.preferred_time.strip() if schema.preferred_time else "",
@@ -259,6 +421,8 @@ Si NO encuentras algo, retorna un string vacío "" para ese campo. NO uses valor
             "customer_name": schema.customer_name,
             "phone": schema.phone,
             "missing_fields": [],  # Limpiar missing_fields
+            "selected_mechanic": selected_mechanic,
+            "selected_area": selected_area,
             "appointment_data": {
                 "customer_name": schema.customer_name,
                 "phone": schema.phone,

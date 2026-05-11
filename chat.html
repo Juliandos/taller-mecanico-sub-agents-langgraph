@@ -219,7 +219,7 @@
     </div>
 
     <script>
-        const API_URL = 'http://127.0.0.1:8080';
+        const API_URL = `${window.location.protocol}//${window.location.host}`;
         const chatMessages = document.getElementById('chatMessages');
         const messageInput = document.getElementById('messageInput');
         const sendBtn = document.getElementById('sendBtn');
@@ -227,14 +227,9 @@
         let threadId = null;
         let isWaiting = false;
 
-        // Cargar thread ID del localStorage
+        // Cada recarga = nuevo thread (no guardar en localStorage)
         function loadThreadId() {
-            threadId = localStorage.getItem('tallerThreadId') || null;
-        }
-
-        function saveThreadId(id) {
-            threadId = id;
-            localStorage.setItem('tallerThreadId', id);
+            threadId = null;
         }
 
         function addMessage(content, isUser, isLoading = false) {
@@ -293,9 +288,9 @@
 
                 const data = await response.json();
 
-                // Guardar thread ID si es nuevo
+                // Usar thread ID para próximo mensaje (pero no guardar)
                 if (data.thread_id) {
-                    saveThreadId(data.thread_id);
+                    threadId = data.thread_id;
                 }
 
                 removeLoading();
