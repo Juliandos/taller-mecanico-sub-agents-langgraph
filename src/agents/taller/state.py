@@ -41,4 +41,5 @@ class TallerState(TypedDict):
 
     # Control
     requires_human: bool
+    human_transfer_requests: int  # Contador de cuántas veces solicita transferencia a humano
     booking_confirmed: bool

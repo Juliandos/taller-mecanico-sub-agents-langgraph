@@ -47,6 +47,66 @@ def orquestador(state: TallerState) -> dict:
 
     last_message = str(content)
 
+    # 🤝 PALABRAS CLAVE PARA TRANSFERENCIA A HUMANO
+    human_keywords = [
+        # Palabras simples
+        "humano", "persona", "operador", "representante", "supervisor",
+        "agente", "transferencia", "transferir",
+        # Frases comunes
+        "hablar con humano", "hablar con una persona", "agente humano",
+        "persona real", "quiero hablar con alguien", "quiero un humano",
+        "hablar con soporte", "soporte humano", "hablar con alguien",
+        "atiendeme", "atiéndeme", "atienda", "asistente real",
+        "no quiero hablar con bot", "call center",
+        "centro de servicio", "servicio al cliente", "atención al cliente",
+        "quiero ser transferido", "transferencia a humano",
+    ]
+
+    # Verificar si solicita hablar con humano PRIMERO (antes que síntomas/citas)
+    if find_keywords(last_message, human_keywords):
+        human_transfer_count = state.get("human_transfer_requests", 0) + 1
+        print(f"[ORQUESTADOR] 🤝 Solicitud de transferencia a humano (intento {human_transfer_count})")
+        return {
+            "requires_human": True,
+            "human_transfer_requests": human_transfer_count
+        }
+
+    # 🚫 DETECCIÓN DE RESPUESTA NEGATIVA IMPLÍCITA A PREGUNTA DE DIAGNÓSTICO
+    # Si el usuario ya pidió handoff una vez, se le pregunta por el problema
+    # Si responde negativamente, es una solicitud implícita de segundo handoff
+    human_transfer_requests = state.get("human_transfer_requests", 0)
+    if human_transfer_requests == 1:
+        # Verificar si el último mensaje IA es la pregunta de diagnóstico
+        prev_ai_msg = None
+        for msg in reversed(messages[:-1]):  # excluir último msg del usuario
+            msg_type = getattr(msg, "type", "").lower() if not isinstance(msg, dict) else msg.get("type", "").lower()
+            if msg_type not in ["human", "user"]:
+                prev_ai_msg = msg
+                break
+
+        if prev_ai_msg:
+            prev_content = getattr(prev_ai_msg, "content", "") if not isinstance(prev_ai_msg, dict) else prev_ai_msg.get("content", "")
+            # Verificar si contiene la pregunta de diagnóstico
+            is_diagnostic_question = "¿podrías describir brevemente qué problema" in str(prev_content)
+
+            if is_diagnostic_question:
+                # Palabras clave para respuesta negativa
+                negative_keywords = [
+                    "no", "nope", "nunca", "jamás", "negativo",
+                    "no quiero", "no quiero hablar", "no voy a",
+                    "no tengo", "no sé", "no me importa",
+                    "sin", "sin responder", "sin detalles",
+                    "prefiero no", "mejor no", "olvídalo",
+                    "no puedo", "no tengo tiempo"
+                ]
+
+                if find_keywords(last_message, negative_keywords):
+                    print(f"[ORQUESTADOR] 🚫 Respuesta negativa detectada a pregunta de diagnóstico → Handoff implícito")
+                    return {
+                        "requires_human": True,
+                        "human_transfer_requests": 2  # Tratarlo como segundo intento
+                    }
+
     # 🔧 PALABRAS CLAVE PARA DIAGNÓSTICO (síntomas, problemas)
     symptom_keywords = [
         # Problemas generales
@@ -185,10 +245,16 @@ def route_orchestrator(state: TallerState) -> str:
     Función de enrutamiento - Controla flujo según estado de diagnóstico.
 
     Flujo:
+    0. Si `requires_human == True` → handoff directo
     1. Si diagnóstico NO completo → rama_diagnostico (recolectar info)
     2. Si cliente confirmó diagnóstico → rama_agendamiento (agendar cita)
     3. Si diagnóstico completo pero NO confirmado → rama_diagnostico (esperar confirmación)
     """
+    # VERIFICAR PRIMERO si se solicitó transferencia a humano
+    if state.get("requires_human", False):
+        print(f"[ROUTE ORCHESTRATOR] 🤝 RUTEANDO A: handoff")
+        return "handoff"
+
     diagnosis_complete = state.get("diagnosis_complete", False)
     client_confirmed = state.get("client_confirmed_diagnosis", False)
     damaged_part = state.get("damaged_part", "")

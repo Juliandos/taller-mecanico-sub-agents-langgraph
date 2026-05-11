@@ -53,6 +53,7 @@ def make_graph():
         {
             "rama_diagnostico": "evaluador_pieza_dañada",
             "rama_agendamiento": "extractor_datos",
+            "handoff": "agregador",  # Transferencia directa a humano
         }
     )
 
