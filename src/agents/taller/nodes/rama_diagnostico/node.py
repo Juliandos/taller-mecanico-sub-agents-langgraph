@@ -1,5 +1,7 @@
 """Rama 1: Diagnóstico - React Agent que maneja todo internamente"""
 
+import re
+import unicodedata
 from agents.taller.state import TallerState
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain.chat_models import init_chat_model
@@ -8,15 +10,138 @@ from langchain.chat_models import init_chat_model
 llm = init_chat_model("openai:gpt-4o", temperature=0.7)
 
 
+def _normalizar_texto(texto: str) -> str:
+    """Normaliza texto: elimina tildes, convierte a minúsculas, normaliza espacios."""
+    # Convertir a minúsculas
+    texto = texto.lower().strip()
+    # Normalizar tildes y acentos
+    texto = unicodedata.normalize('NFKD', texto)
+    texto = ''.join([c for c in texto if not unicodedata.combining(c)])
+    # Normalizar espacios múltiples a un solo espacio
+    texto = re.sub(r'\s+', ' ', texto)
+    return texto
+
+
+def _detectar_palabra_clave(texto: str, palabras_clave: list) -> bool:
+    """Detecta palabras clave con soporte para regex, tildes, espacios variables."""
+    texto_norm = _normalizar_texto(texto)
+
+    for palabra in palabras_clave:
+        # Crear patrón regex que permite 1-2 espacios entre palabras
+        patron = _crear_patron_flexible(palabra)
+        if re.search(patron, texto_norm):
+            return True
+    return False
+
+
+def _crear_patron_flexible(palabra: str) -> str:
+    """Crea un patrón regex flexible para palabras con espacios variables."""
+    # Normalizar la palabra
+    palabra_norm = _normalizar_texto(palabra)
+    # Reemplazar espacios individuales con patrón de 1-2 espacios
+    patron = palabra_norm.replace(' ', r'\s{1,2}')
+    # Usar límites de palabra para exactitud
+    return r'\b' + patron + r'\b'
+
+
+def _generar_respuesta_ia(sistema: str, usuario: str) -> str:
+    """Genera una respuesta con IA de forma natural."""
+    try:
+        respuesta = llm.invoke([
+            ("system", sistema),
+            ("human", usuario)
+        ])
+        return respuesta.content if hasattr(respuesta, 'content') else str(respuesta)
+    except Exception as e:
+        print(f"[IA_ERROR] Error generando respuesta: {e}")
+        return None
+
+
+def _generar_preguntas_diagnostico(ultimo_mensaje: str) -> str:
+    """Genera preguntas diagnósticas personalizadas basadas en lo que el cliente dice."""
+    system = """Eres un mecánico amable y profesional de un taller de autos.
+El cliente acaba de describir un problema con su vehículo.
+Genera 3-4 preguntas diagnósticas ESPECÍFICAS y naturales basadas en lo que describió.
+Las preguntas deben ser empáticas, profesionales y orientadas a entender mejor el problema.
+Sé conversacional, no hagas una lista numerada, sino que fluya naturalmente."""
+
+    respuesta = _generar_respuesta_ia(system, f"El cliente dice: {ultimo_mensaje}")
+    return respuesta or "Entiendo tu problema. ¿Cuándo comenzó? ¿Es continuo o intermitente? ¿Has notado otros síntomas?"
+
+
+def _generar_diagnostico_basado_en_sintomas(sintomas: str, rag_context: str = "") -> str:
+    """Genera un diagnóstico personalizado basado en los síntomas del cliente."""
+    system = """Eres un mecánico experto en diagnóstico de vehículos.
+Basándote en los síntomas descritos, genera un diagnóstico preliminar REALISTA.
+
+ESTRUCTURA:
+1. Comienza con el título: 📋 **DIAGNÓSTICO PRELIMINAR**
+2. Incluye:
+   - Posibles piezas dañadas (sé específico basándote en los síntomas)
+   - Causa probable
+   - Urgencia (baja, media, media-alta, alta)
+3. AL FINAL, siempre agrega:
+
+   **¿Deseas proceder con la reparación?**
+   Responde con: "ok", "perfecto", "adelante", "claro", "dale" o "vamos"
+
+Sé profesional pero amable. El usuario debe entender claramente qué está mal y por qué."""
+
+    contexto_rag = f"\nInformación técnica disponible:\n{rag_context}" if rag_context else ""
+    prompt = f"Síntomas del cliente: {sintomas}{contexto_rag}"
+
+    respuesta = _generar_respuesta_ia(system, prompt)
+    return respuesta or "📋 **DIAGNÓSTICO PRELIMINAR**\n\nSe requiere una revisión detallada del vehículo.\n\n**¿Deseas proceder con la reparación?**\nResponde con: 'ok', 'perfecto', 'adelante', 'claro', 'dale' o 'vamos'"
+
+
+# def _generar_confirmacion_diagnostico(pieza_dañada: str, respuesta_cliente: str) -> str:
+#     """Genera una confirmación natural del diagnóstico aceptado."""
+#     system = """Eres un mecánico profesional que acaba de recibir la confirmación del cliente para proceder.
+# Genera una respuesta breve, profesional y amable que:
+# - Confirme que procederás con la reparación
+# - Mencione la pieza/problema identificado
+# - Pregunta sobre disponibilidad para agendar
+# Sé conversacional y cálido. No uses emojis ni formatos especiales."""
+
+#     prompt = f"El cliente confirmó proceder con: {pieza_dañada}. Respondió: '{respuesta_cliente}'"
+#     respuesta = _generar_respuesta_ia(system, prompt)
+#     return respuesta or f"Perfecto, procederemos con la reparación. ¿Cuándo te viene bien agendar?"
+
+
+def _generar_confirmacion_diagnostico(pieza_dañada: str, respuesta_cliente: str = "") -> str:
+    """Genera una confirmación natural del diagnóstico aceptado + pregunta de agendamiento."""
+    system = """Eres un mecánico que acaba de recibir la confirmación del cliente para proceder.
+Genera una respuesta profesional y amable que:
+1. Confirme que procederemos con la reparación
+2. Mencione brevemente la pieza/problema identificado
+3. Pregunta CUÁNDO desea agendar la cita (fecha y hora)
+
+Sé conversacional y cálido. Pide fecha y hora de forma natural en una sola pregunta."""
+
+    contexto = f"Respondió: '{respuesta_cliente}'" if respuesta_cliente else ""
+    prompt = f"El cliente confirmó proceder con la reparación de: {pieza_dañada}. {contexto}"
+    respuesta = _generar_respuesta_ia(system, prompt)
+    return respuesta or f"✅ Perfecto, procederemos con la reparación. ¿Cuándo te gustaría agendar la cita? Por favor, dime la fecha y hora preferida."
+
+
 def _detectar_intension_agendar(ultimo_mensaje: str) -> bool:
     """Detecta si el usuario quiere agendar cita directamente."""
     keywords_agendar = [
+        # Palabras clave originales
         "cita", "agendar", "agendar cita", "quiero una cita", "necesito una cita",
         "directamente", "ahora mismo", "lo antes posible", "urgente",
-        "solo quiero agendar", "reservar", "appointment", "schedule"
+        "solo quiero agendar", "reservar", "appointment", "schedule",
+        # Nuevas variaciones
+        "dame una cita", "dame cita", "hazme una cita", "programar cita", "programar una cita",
+        "quiero programar", "necesito programar", "agenda me", "agendame",
+        "reserva cita", "reserva una cita", "necesito reservar", "quiero reservar",
+        "cita urgente", "cita hoy", "cita ahora", "cita ya", "cita inmediata",
+        "cita inmediatamente", "para hoy", "para ahora", "para ya", "lo mas rapido",
+        "lo mas pronto", "cuanto antes", "asap", "inmediato", "rapido",
+        "direct", "directo a cita", "sin diagnostico", "sin pregunta",
+        "llevo directo", "me lleva directo", "voy directo",
     ]
-    msg_clean = ultimo_mensaje.lower().strip()
-    return any(kw in msg_clean for kw in keywords_agendar)
+    return _detectar_palabra_clave(ultimo_mensaje, keywords_agendar)
 
 
 def evaluador_pieza_dañada(state: TallerState) -> dict:
@@ -63,11 +188,51 @@ def evaluador_pieza_dañada(state: TallerState) -> dict:
 
     print(f"[EVALUADOR] Último mensaje: '{last_msg}'")
 
-    confirm_keywords = ["sí", "si", "ok", "vale", "listo", "adelante", "confirmado", "correcto", "yes", "acepto", "aceptado", "perfecto", "está bien", "es correcto", "procede"]
-    has_confirmation = any(kw in last_msg for kw in confirm_keywords)
+    confirm_keywords = [
+        # Palabras/frases que claramente indican confirmación (SIN "si/sí")
+        "ok", "perfecto", "adelante", "claro", "dale", "vamos", "exacto",
+        "vale", "listo", "bueno", "está bien", "me parece bien", "me parece perfecto",
+        "aceptado", "confirmado", "aprobado", "procede", "proceder", "procedamos",
+        "yes", "acepto", "correcto", "está ok", "está perfecto", "está confirmado",
+        "this ok", "this good", "this perfect", "dale adelante", "adelante con eso",
+        "vamosss", "dale dale", "claro que sí", "obvio", "por supuesto",
+        "seguro", "seguro que sí", "exactamente", "super bien", "muy bien",
+        "esta super bien", "esta muy bien", "está bueno", "está genial",
+        "apruebo", "ya", "ya está", "claro que sí", "ok confirmo",
+        "ok confirmado", "listo confirmado", "listo dale", "vamos con eso",
+        "vamos adelante", "procedemos", "hagamoslo", "hagamos esto",
+        "affirmative", "affirmativo", "confirmo", "confirmed",
+    ]
+    has_confirmation = _detectar_palabra_clave(last_msg, confirm_keywords)
 
-    print(f"[EVALUADOR] Palabras confirmación: {confirm_keywords}")
     print(f"[EVALUADOR] ¿Detectó confirmación? {has_confirmation}")
+
+    # CASO ESPECIAL: Diagnóstico confirmado pero aún sin información de agendamiento
+    # → Preguntar "¿Cuándo deseas agendar?"
+    appointment_data = state.get("appointment_data", {})
+    preferred_date = appointment_data.get("preferred_date", "")
+
+    if client_confirmed_diagnosis and not preferred_date:
+        print("[EVALUADOR] 💼 Diagnóstico confirmado pero sin fecha de agendamiento → PREGUNTAR POR AGENDAMIENTO")
+
+        system_msg = """Eres un mecánico que acabas de confirmar un diagnóstico con el cliente.
+Ahora necesitas saber cuándo puede venir para la reparación.
+Genera una pregunta natural y amable sobre su disponibilidad.
+Sé conversacional, cálido y profesional."""
+
+        pregunta_agendamiento = llm.invoke([
+            ("system", system_msg),
+            ("human", f"El cliente confirmó proceder con la reparación de: {damaged_part}")
+        ])
+        pregunta_texto = pregunta_agendamiento.content if hasattr(pregunta_agendamiento, 'content') else str(pregunta_agendamiento)
+
+        result = {
+            "messages": [AIMessage(content=pregunta_texto)],
+            "diagnostico_decision": "ir_a_agregador",
+            "diagnostico_summary": pregunta_texto,
+        }
+        print(f"[EVALUADOR] Retornando pregunta de agendamiento: {list(result.keys())}")
+        return result
 
     # TURNO 1: Detectar intención o preguntar
     if len(user_messages) == 1:
@@ -110,15 +275,12 @@ Sé natural, amable y profesional."""
                 }
                 return result
 
-        # Si no quiere agendar directamente, hacer preguntas diagnósticas normales
-        print("[EVALUADOR] 📋 Cliente menciona un problema, haciendo preguntas diagnósticas")
-        pregunta = """Entiendo tu problema. Permíteme hacer algunas preguntas para diagnosticar mejor:
+        # Si no quiere agendar directamente, hacer preguntas diagnósticas personalizadas con IA
+        print("[EVALUADOR] 📋 Cliente menciona un problema, generando preguntas diagnósticas personalizadas")
+        pregunta = _generar_preguntas_diagnostico(last_msg)
 
-1. ¿Cuándo comenzó a ocurrir este problema?
-2. ¿Es continuo o intermitente?
-3. ¿Has notado otros síntomas adicionales?
-
-Con esta información podré identificar qué pieza o servicio necesitas."""
+        if not pregunta:
+            pregunta = "Entiendo tu problema. ¿Cuándo comenzó? ¿Es continuo o intermitente? ¿Has notado otros síntomas?"
 
         result = {
             "messages": [AIMessage(content=pregunta)],
@@ -136,13 +298,15 @@ Con esta información podré identificar qué pieza o servicio necesitas."""
         # Si quiso agendar en TURNO 1 y vuelve a insistir, crear diagnóstico general
         if len(user_messages) == 2 and _detectar_intension_agendar(last_msg):
             print("[EVALUADOR] 🎯 Cliente insiste en cita en segundo mensaje → Diagnóstico general")
-            resumen_general = """✅ DIAGNÓSTICO GENERAL PROGRAMADO
-━━━━━━━━━━━━━━━━━━━━━
-Entendido, procederemos con una cita de diagnóstico general.
+            system = """Eres un mecánico profesional. El cliente insiste en agendar sin hacer diagnóstico previo.
+Responde de forma amable y profesional ACEPTANDO su solicitud de diagnóstico general.
+Explica brevemente qué incluye una revisión de diagnóstico general y pregunta cuándo puede venir.
+Sé conversacional y cálido, no formal. No uses formatos con emojis o líneas, solo texto natural."""
 
-En esta cita nuestros mecánicos realizarán una revisión completa de tu vehículo para identificar cualquier problema o necesidad de mantenimiento.
+            resumen_general = _generar_respuesta_ia(system, last_msg)
 
-¿Cuándo te gustaría agendar la cita? (ej: mañana, próxima semana, día específico)"""
+            if not resumen_general:
+                resumen_general = "Perfecto, procederemos con una revisión de diagnóstico general completo. ¿Cuándo te gustaría venir?"
 
             result = {
                 "messages": [AIMessage(content=resumen_general)],
@@ -159,12 +323,9 @@ En esta cita nuestros mecánicos realizarán una revisión completa de tu vehíc
         if diagnosis_complete and has_confirmation and client_confirmed_diagnosis == False:
             print("[EVALUADOR] 🎯 CASO 1: diagnosis_complete=True + has_confirmation=True")
             print("[EVALUADOR] ✅ Cliente confirmó el diagnóstico → IR A AGENDAMIENTO")
-            confirmacion_msg = f"""✅ DIAGNÓSTICO ACEPTADO
-━━━━━━━━━━━━━━━━━━━━━
-Pieza identificada: {state.get('damaged_part', 'Bujías y/o Filtro de aceite')}
-Costo estimado: $150-250k (mano de obra + partes)
 
-Procedemos a agendar tu cita para la reparación. ¿Qué fecha te viene bien?"""
+            pieza = state.get('damaged_part', 'el trabajo identificado')
+            confirmacion_msg = _generar_confirmacion_diagnostico(pieza, last_msg)
 
             result = {
                 "messages": [AIMessage(content=confirmacion_msg)],
@@ -178,23 +339,24 @@ Procedemos a agendar tu cita para la reparación. ¿Qué fecha te viene bien?"""
         # PRIORIDAD 2: Si cliente confirma pero SIN diagnóstico aún → generar diagnóstico inicial
         if has_confirmation and not diagnosis_complete:
             print("[EVALUADOR] 🎯 CASO RÁPIDO: Cliente confirma pero sin diagnóstico → GENERAR DIAGNÓSTICO")
-            resumen = f"""DIAGNÓSTICO PRELIMINAR:
-━━━━━━━━━━━━━━━━━━━━━
-Basándome en tu descripción:
 
-🔧 Pieza Dañada Identificada: Bujías y/o Filtro de aceite
-⚠️ Causa: Desgaste normal por uso
-🔴 Urgencia: Media (revisar pronto)
-💰 Costo estimado: $150-250k (mano de obra + partes)
+            # Extraer síntomas de los mensajes del cliente
+            sintomas = " ".join([
+                m.get("content", "") if isinstance(m, dict) else (m.content if hasattr(m, "content") else "")
+                for m in messages if isinstance(m, dict) and m.get("type") == "human" or (hasattr(m, "type") and m.type == "human")
+            ])
 
-¿Confirmas que deseas proceder con esta reparación? (Responde: Sí/Si/Ok/Vale)"""
+            resumen = _generar_diagnostico_basado_en_sintomas(sintomas)
+
+            if not resumen:
+                resumen = "Basándome en tu descripción, se requiere una revisión detallada. ¿Deseas proceder con la reparación?"
 
             result = {
                 "messages": [AIMessage(content=resumen)],
                 "diagnostico_decision": "ir_a_agregador",
                 "diagnostico_summary": resumen,
                 "diagnosis_complete": True,
-                "damaged_part": "Bujías y/o Filtro de aceite",
+                "damaged_part": "Según diagnóstico",
             }
             print(f"[EVALUADOR] Retornando: {list(result.keys())}")
             return result
@@ -216,25 +378,21 @@ Basándome en tu descripción:
             # Caso B: Sin diagnóstico pero ya tiene contexto RAG → generar diagnóstico
             if not diagnosis_complete and rag_context:
                 print("[EVALUADOR] 💡 CASO B: Sin diagnóstico + rag_context → GENERAR DIAGNÓSTICO")
-                resumen = f"""DIAGNÓSTICO PRELIMINAR:
-━━━━━━━━━━━━━━━━━━━━━
-Basándome en tu descripción y los manuales técnicos:
+                sintomas = " ".join([
+                    m.get("content", "") if isinstance(m, dict) else (m.content if hasattr(m, "content") else "")
+                    for m in messages if isinstance(m, dict) and m.get("type") == "human" or (hasattr(m, "type") and m.type == "human")
+                ])
+                resumen = _generar_diagnostico_basado_en_sintomas(sintomas, rag_context)
 
-{rag_context}
-
-🔧 Posible Pieza Dañada: Bujías y/o Filtro de aceite
-⚠️ Causa: Desgaste normal por uso
-🔴 Urgencia: Media (revisar pronto)
-💰 Costo estimado: $150-250k (mano de obra + partes)
-
-¿Confirmas que deseas proceder con esta reparación? (Responde: Sí/Si/Ok/Vale)"""
+                if not resumen:
+                    resumen = "Basándome en los manuales técnicos y tu descripción, requiere una revisión. ¿Deseas proceder?"
 
                 result = {
                     "messages": [AIMessage(content=resumen)],
                     "diagnostico_decision": "ir_a_agregador",
                     "diagnostico_summary": resumen,
                     "diagnosis_complete": True,
-                    "damaged_part": "Bujías y/o Filtro de aceite",
+                    "damaged_part": "Según diagnóstico técnico",
                 }
                 print(f"[EVALUADOR] Retornando: {list(result.keys())}")
                 return result
@@ -245,25 +403,35 @@ Basándome en tu descripción y los manuales técnicos:
                 # Si ya tiene contexto RAG → generar diagnóstico mejorado
                 if rag_context:
                     print(f"[EVALUADOR] 📊 Regenerando diagnóstico refinado ({rag_calls}/3)")
-                    resumen = f"""DIAGNÓSTICO REFINADO:
-━━━━━━━━━━━━━━━━━━━━━
-Basándome en búsquedas adicionales:
+                    sintomas = " ".join([
+                        m.get("content", "") if isinstance(m, dict) else (m.content if hasattr(m, "content") else "")
+                        for m in messages if isinstance(m, dict) and m.get("type") == "human" or (hasattr(m, "type") and m.type == "human")
+                    ])
 
-{rag_context}
+                    system = """Eres un mecánico experto. Ya hiciste un diagnóstico inicial y ahora tienes información técnica adicional.
+Regenera un diagnóstico REFINADO que:
+- Incluya el nuevo contexto técnico
+- Sea más preciso que el anterior
+- Señale si hay problemas adicionales encontrados
 
-🔧 Piezas Dañadas Identificadas: Bujías, Filtro de aceite, Llanta, Sistema de dirección
-⚠️ Causa: Desgaste múltiple y daños
-🔴 Urgencia: Media-Alta (revisar pronto)
-💰 Costo estimado: $200-350k (múltiples reparaciones)
+AL FINAL, siempre agrega:
+   **¿Deseas proceder con la reparación?**
+   Responde con: "ok", "perfecto", "adelante", "claro", "dale" o "vamos"
 
-¿Confirmas que deseas proceder con esta reparación? (Responde: Sí/Si/Ok/Vale)"""
+Sé profesional pero natural. No uses emojis ni formatos especiales."""
+
+                    prompt = f"Síntomas: {sintomas}\nInformación técnica adicional: {rag_context}"
+                    resumen = _generar_respuesta_ia(system, prompt)
+
+                    if not resumen:
+                        resumen = "Basándome en información adicional, refino el diagnóstico anterior.\n\n**¿Deseas proceder con la reparación?**\nResponde con: 'ok', 'perfecto', 'adelante', 'claro', 'dale' o 'vamos'"
 
                     result = {
                         "messages": [AIMessage(content=resumen)],
                         "diagnostico_decision": "ir_a_agregador",
                         "diagnostico_summary": resumen,
-                        "damaged_part": "Bujías, Filtro de aceite, Llanta, Sistema de dirección",
-                        "rag_context": "",  # Limpiar para próxima búsqueda
+                        "damaged_part": "Diagnóstico refinado",
+                        "rag_context": "",
                     }
                     print(f"[EVALUADOR] Retornando: {list(result.keys())}")
                     return result
@@ -281,21 +449,30 @@ Basándome en búsquedas adicionales:
             # Caso D: Alcanzó máx búsquedas o sin RAG → mostrar diagnóstico final
             else:
                 print("[EVALUADOR] ⛔ CASO D: Alcanzó máx búsquedas")
-                resumen = """DIAGNÓSTICO FINAL:
-━━━━━━━━━━━━━━━━━━━━━
-🔧 Piezas Dañadas: Bujías, Filtro de aceite, Llanta, Sistema de dirección
-⚠️ Causa: Desgaste múltiple y daños
-🔴 Urgencia: Media-Alta (revisar pronto)
-💰 Costo estimado: $200-350k (múltiples reparaciones)
+                sintomas = " ".join([
+                    m.get("content", "") if isinstance(m, dict) else (m.content if hasattr(m, "content") else "")
+                    for m in messages if isinstance(m, dict) and m.get("type") == "human" or (hasattr(m, "type") and m.type == "human")
+                ])
 
-¿Confirmas que deseas proceder con esta reparación? (Responde: Sí/Si/Ok/Vale)"""
+                system = """Eres un mecánico experto que ha completado un diagnóstico exhaustivo.
+Genera un diagnóstico FINAL que resuma:
+- Los problemas identificados (basándote en los síntomas)
+- La causa probable
+- La urgencia
+- Un llamado a acción para proceder
+Sé profesional pero amable. No uses emojis ni formatos especiales."""
+
+                resumen = _generar_respuesta_ia(system, f"Síntomas descritos: {sintomas}")
+
+                if not resumen:
+                    resumen = "Basándome en todo lo revisado, aquí está mi diagnóstico final. ¿Deseas proceder con la reparación?"
 
                 result = {
                     "messages": [AIMessage(content=resumen)],
                     "diagnostico_decision": "ir_a_agregador",
                     "diagnostico_summary": resumen,
                     "diagnosis_complete": True,
-                    "damaged_part": "Bujías, Filtro de aceite, Llanta, Sistema de dirección",
+                    "damaged_part": "Diagnóstico final",
                 }
                 print(f"[EVALUADOR] Retornando: {list(result.keys())}")
                 return result

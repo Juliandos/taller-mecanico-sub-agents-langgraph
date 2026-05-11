@@ -1,5 +1,6 @@
 """Extractor de datos para agendamiento de citas."""
 
+import re
 from langchain.chat_models import init_chat_model
 from langchain_core.messages import AIMessage
 from pydantic import BaseModel, Field
@@ -14,6 +15,41 @@ class AppointmentData(BaseModel):
 
 llm = init_chat_model("openai:gpt-4o", temperature=0)
 llm = llm.with_structured_output(schema=AppointmentData)
+
+# Horario laboral: 8:00 AM - 6:00 PM (08:00 - 18:00)
+BUSINESS_HOURS_START = 8
+BUSINESS_HOURS_END = 18
+
+def _validar_hora_laboral(hora_str: str) -> bool:
+    """
+    Valida que la hora esté dentro del horario laboral (8 AM - 6 PM).
+    Acepta formatos: "10:00", "10 am", "10 pm", "10:30", "mañana a las 10", etc.
+    Retorna True si es válida, False si está fuera de horario.
+    """
+    if not hora_str:
+        return False
+
+    hora_lower = hora_str.lower().strip()
+
+    # Buscar formato de hora (HH:MM o HH)
+    hora_match = re.search(r'(\d{1,2}):?(\d{2})?', hora_lower)
+    if not hora_match:
+        return False
+
+    hora = int(hora_match.group(1))
+
+    # Si dice "pm" o "p.m." y no es 12
+    if ('pm' in hora_lower or 'p.m.' in hora_lower) and hora != 12:
+        hora += 12
+    # Si dice "am" o "a.m." y es 12, convertir a 0
+    elif ('am' in hora_lower or 'a.m.' in hora_lower) and hora == 12:
+        hora = 0
+
+    # Validar rango horario (8 AM - 6 PM = 8:00 - 18:00)
+    if hora < BUSINESS_HOURS_START or hora >= BUSINESS_HOURS_END:
+        return False
+
+    return True
 
 def extractor_datos(state: TallerState) -> dict:
     """
@@ -73,7 +109,7 @@ Si NO encuentras algo, retorna un string vacío "" para ese campo. NO uses valor
 
         print(f"[EXTRACTOR_DATOS] Extraído: nombre='{schema.customer_name}' | teléfono='{schema.phone}' | fecha='{schema.preferred_date}' | hora='{schema.preferred_time}'")
 
-        # Verificar qué datos faltan
+        # Verificar qué datos faltan o son inválidos
         missing_fields = []
         if not schema.customer_name or schema.customer_name.strip() == "":
             missing_fields.append("customer_name")
@@ -83,6 +119,13 @@ Si NO encuentras algo, retorna un string vacío "" para ese campo. NO uses valor
             missing_fields.append("preferred_date")
         if not schema.preferred_time or schema.preferred_time.strip() == "":
             missing_fields.append("preferred_time")
+        elif not _validar_hora_laboral(schema.preferred_time):
+            # La hora está fuera de horario laboral
+            print(f"[EXTRACTOR_DATOS] ⚠️ Hora fuera de horario: {schema.preferred_time}")
+            missing_fields.append("preferred_time")
+            # Mostrar mensaje específico sobre horario inválido
+            if "preferred_time_invalid" not in missing_fields:
+                missing_fields.append("preferred_time_invalid")
 
         # Si faltan datos críticos, pedir que se proporcionen
         if missing_fields:
