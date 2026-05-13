@@ -138,10 +138,6 @@ ESTRUCTURA DE TU RESPUESTA:
 2. Línea 2: Si hay info sobre qué se repara: menciónalo brevemente
 3. Línea 3+: PREGUNTA DIRECTA por fecha y hora de agendamiento
 
-EJEMPLO CORRECTO:
-"✅ Perfecto, procederemos con la reparación del motor.
-
-¿Cuándo te gustaría agendar la cita? Dime la fecha y hora que te venga mejor."
 
 EVITAR:
 ❌ "¡Hola! Me alegra que hayas decidido..."
@@ -222,6 +218,8 @@ def evaluador_pieza_dañada(state: TallerState) -> dict:
     Turno 2+ (2+ msgs): Decide buscar RAG o generar resumen
     Turno N (confirmación): Valida confirmación del cliente
     """
+    new_state: TallerState = {}
+
     messages = state.get("messages", [])
     rag_context = state.get("rag_context", "")
     diagnosis_complete = state.get("diagnosis_complete", False)
@@ -296,13 +294,11 @@ Sé conversacional, cálido y profesional."""
         ])
         pregunta_texto = pregunta_agendamiento.content if hasattr(pregunta_agendamiento, 'content') else str(pregunta_agendamiento)
 
-        result = {
-            "messages": [AIMessage(content=pregunta_texto)],
-            "diagnostico_decision": "ir_a_agregador",
-            "diagnostico_summary": pregunta_texto,
-        }
-        print(f"[EVALUADOR] Retornando pregunta de agendamiento: {list(result.keys())}")
-        return result
+        new_state["messages"] = [AIMessage(content=pregunta_texto)]
+        new_state["diagnostico_decision"] = "ir_a_agregador"
+        new_state["diagnostico_summary"] = pregunta_texto
+        print(f"[EVALUADOR] Retornando pregunta de agendamiento: {list(new_state.keys())}")
+        return new_state
 
     # TURNO 1: Detectar intención o preguntar
     if len(user_messages) == 1:
@@ -327,23 +323,18 @@ Sé natural, amable y profesional."""
                 ])
                 respuesta_texto = respuesta.content if hasattr(respuesta, 'content') else str(respuesta)
 
-                result = {
-                    "messages": [AIMessage(content=respuesta_texto)],
-                    "diagnostico_decision": "ir_a_agregador",
-                    "diagnostico_summary": respuesta_texto,
-                }
-                print(f"[EVALUADOR] Retornando: {list(result.keys())}")
-                return result
+                new_state["messages"] = [AIMessage(content=respuesta_texto)]
+                new_state["diagnostico_decision"] = "ir_a_agregador"
+                new_state["diagnostico_summary"] = respuesta_texto
+                print(f"[EVALUADOR] Retornando: {list(new_state.keys())}")
+                return new_state
             except Exception as e:
                 print(f"[EVALUADOR] ❌ Error generando respuesta: {e}")
-                # Fallback a respuesta genérica
                 fallback = "Claro, con gusto te agendo una cita. Pero primero, ¿qué problema tiene tu auto? Así hago un diagnóstico antes de agendar."
-                result = {
-                    "messages": [AIMessage(content=fallback)],
-                    "diagnostico_decision": "ir_a_agregador",
-                    "diagnostico_summary": fallback,
-                }
-                return result
+                new_state["messages"] = [AIMessage(content=fallback)]
+                new_state["diagnostico_decision"] = "ir_a_agregador"
+                new_state["diagnostico_summary"] = fallback
+                return new_state
 
         # Si no quiere agendar directamente, hacer preguntas diagnósticas personalizadas con IA
         print("[EVALUADOR] 📋 Cliente menciona un problema, generando preguntas diagnósticas personalizadas")
@@ -352,13 +343,11 @@ Sé natural, amable y profesional."""
         if not pregunta:
             pregunta = "Entiendo tu problema. ¿Cuándo comenzó? ¿Es continuo o intermitente? ¿Has notado otros síntomas?"
 
-        result = {
-            "messages": [AIMessage(content=pregunta)],
-            "diagnostico_decision": "ir_a_agregador",
-            "diagnostico_summary": pregunta,
-        }
-        print(f"[EVALUADOR] Retornando: {list(result.keys())}")
-        return result
+        new_state["messages"] = [AIMessage(content=pregunta)]
+        new_state["diagnostico_decision"] = "ir_a_agregador"
+        new_state["diagnostico_summary"] = pregunta
+        print(f"[EVALUADOR] Retornando: {list(new_state.keys())}")
+        return new_state
 
     # TURNO 2+: decidir si buscar RAG o generar resumen
     if len(user_messages) >= 2:
@@ -378,16 +367,14 @@ Sé conversacional y cálido, no formal. No uses formatos con emojis o líneas, 
             if not resumen_general:
                 resumen_general = "Perfecto, procederemos con una revisión de diagnóstico general completo. ¿Cuándo te gustaría venir?"
 
-            result = {
-                "messages": [AIMessage(content=resumen_general)],
-                "diagnostico_decision": "ir_a_agregador",
-                "diagnostico_summary": resumen_general,
-                "diagnosis_complete": True,
-                "damaged_part": "Diagnóstico general (sin pieza específica identificada)",
-                "client_confirmed_diagnosis": True,
-            }
-            print(f"[EVALUADOR] Retornando: {list(result.keys())}")
-            return result
+            new_state["messages"] = [AIMessage(content=resumen_general)]
+            new_state["diagnostico_decision"] = "ir_a_agregador"
+            new_state["diagnostico_summary"] = resumen_general
+            new_state["diagnosis_complete"] = True
+            new_state["damaged_part"] = "Diagnóstico general (sin pieza específica identificada)"
+            new_state["client_confirmed_diagnosis"] = True
+            print(f"[EVALUADOR] Retornando: {list(new_state.keys())}")
+            return new_state
 
         # PRIORIDAD 1: Si diagnóstico completo y cliente confirma → aceptar diagnóstico
         if diagnosis_complete and has_confirmation and client_confirmed_diagnosis == False:
@@ -408,14 +395,12 @@ Sé conversacional y cálido, no formal. No uses formatos con emojis o líneas, 
 
             confirmacion_msg = _generar_confirmacion_diagnostico(pieza, last_msg, es_refinado)
 
-            result = {
-                "messages": [AIMessage(content=confirmacion_msg)],
-                "diagnostico_decision": "ir_a_agregador",
-                "diagnostico_summary": confirmacion_msg,
-                "client_confirmed_diagnosis": True,
-            }
-            print(f"[EVALUADOR] Retornando: {list(result.keys())}")
-            return result
+            new_state["messages"] = [AIMessage(content=confirmacion_msg)]
+            new_state["diagnostico_decision"] = "ir_a_agregador"
+            new_state["diagnostico_summary"] = confirmacion_msg
+            new_state["client_confirmed_diagnosis"] = True
+            print(f"[EVALUADOR] Retornando: {list(new_state.keys())}")
+            return new_state
 
         # PRIORIDAD 2: Si cliente confirma pero SIN diagnóstico aún → generar diagnóstico inicial
         if has_confirmation and not diagnosis_complete:
@@ -432,15 +417,13 @@ Sé conversacional y cálido, no formal. No uses formatos con emojis o líneas, 
             if not resumen:
                 resumen = "Basándome en tu descripción, se requiere una revisión detallada. ¿Deseas proceder con la reparación?"
 
-            result = {
-                "messages": [AIMessage(content=resumen)],
-                "diagnostico_decision": "ir_a_agregador",
-                "diagnostico_summary": resumen,
-                "diagnosis_complete": True,
-                "damaged_part": "Según diagnóstico",
-            }
-            print(f"[EVALUADOR] Retornando: {list(result.keys())}")
-            return result
+            new_state["messages"] = [AIMessage(content=resumen)]
+            new_state["diagnostico_decision"] = "ir_a_agregador"
+            new_state["diagnostico_summary"] = resumen
+            new_state["diagnosis_complete"] = True
+            new_state["damaged_part"] = "Según diagnóstico"
+            print(f"[EVALUADOR] Retornando: {list(new_state.keys())}")
+            return new_state
 
         # PRIORIDAD 3: Si cliente NO ha confirmado, buscar RAG o generar diagnóstico
         if not has_confirmation:
@@ -451,12 +434,10 @@ Sé conversacional y cálido, no formal. No uses formatos con emojis o líneas, 
                 print("[EVALUADOR] 🔍 CASO A: Sin diagnóstico + sin rag_context → BUSCAR RAG (ÚNICA BÚSQUEDA)")
                 # Detectar sistema inicial para luego saber si cambió
                 sistema = _detectar_sistema_vehiculo(last_msg)
-                result = {
-                    "diagnostico_decision": "buscar_info",
-                    "initial_rag_system": sistema or "general",
-                }
-                print(f"[EVALUADOR] Retornando: {list(result.keys())}")
-                return result
+                new_state["diagnostico_decision"] = "buscar_info"
+                new_state["initial_rag_system"] = sistema or "general"
+                print(f"[EVALUADOR] Retornando: {list(new_state.keys())}")
+                return new_state
 
             # Caso B: Sin diagnóstico pero ya tiene contexto RAG → generar diagnóstico
             if not diagnosis_complete and rag_context:
@@ -527,31 +508,29 @@ Sé profesional y amable. SIEMPRE consulta la información técnica disponible."
                     if not resumen:
                         resumen = "Basándome en información técnica disponible, refino el diagnóstico anterior.\n\n**¿Deseas proceder con la reparación?**\nResponde con: 'ok', 'perfecto', 'adelante', 'claro', 'dale' o 'vamos'"
 
-                    result = {
-                        "messages": [AIMessage(content=resumen)],
-                        "diagnostico_decision": "ir_a_agregador",
-                        "diagnostico_summary": resumen,
-                        "damaged_part": "Diagnóstico refinado",
-                    }
-                    print(f"[EVALUADOR] Retornando: {list(result.keys())}")
-                    return result
+                    new_state["messages"] = [AIMessage(content=resumen)]
+                    new_state["diagnostico_decision"] = "ir_a_agregador"
+                    new_state["diagnostico_summary"] = resumen
+                    new_state["damaged_part"] = "Diagnóstico refinado"
+                    print(f"[EVALUADOR] Retornando: {list(new_state.keys())}")
+                    return new_state
 
             # Caso D: Fallback - sin RAG context aún → buscar RAG (debería haber sido CASO A)
             if not rag_context:
                 print("[EVALUADOR] 🔍 CASO D: Fallback - sin rag_context aún, buscando RAG")
                 sistema = _detectar_sistema_vehiculo(last_msg)
-                result = {
-                    "diagnostico_decision": "buscar_info",
-                    "initial_rag_system": sistema or "general",
-                }
-                print(f"[EVALUADOR] Retornando: {list(result.keys())}")
-                return result
+                new_state["diagnostico_decision"] = "buscar_info"
+                new_state["initial_rag_system"] = sistema or "general"
+                print(f"[EVALUADOR] Retornando: {list(new_state.keys())}")
+                return new_state
             else:
                 print("[EVALUADOR] ⛔ CASO DEFAULT: No coincidió ningún criterio, retornando agregador")
-                return {"diagnostico_decision": "ir_a_agregador"}
+                new_state["diagnostico_decision"] = "ir_a_agregador"
+                return new_state
 
     print("[EVALUADOR] ❌ Ningún caso coincidió, retorno por defecto")
-    return {"diagnostico_decision": "ir_a_agregador"}
+    new_state["diagnostico_decision"] = "ir_a_agregador"
+    return new_state
 
 
 def buscar_rag_mecanica(state: TallerState) -> dict:
@@ -559,6 +538,8 @@ def buscar_rag_mecanica(state: TallerState) -> dict:
     Busca información técnica en pgvector.
     Deposita resultado en 'rag_context' (no en messages).
     """
+    new_state: TallerState = {}
+
     from agents.taller.rag.retriever import get_retriever
 
     messages = state.get("messages", [])
@@ -594,7 +575,8 @@ def buscar_rag_mecanica(state: TallerState) -> dict:
         print(f"[BUSCAR_RAG] ❌ Error: {e}")
         contexto = "Base de datos no disponible."
 
-    return {"rag_context": contexto}
+    new_state["rag_context"] = contexto
+    return new_state
 
 
 def route_diagnostico(state: TallerState) -> str:

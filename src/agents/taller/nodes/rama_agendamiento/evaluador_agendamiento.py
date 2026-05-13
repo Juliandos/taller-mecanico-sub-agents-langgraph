@@ -24,6 +24,8 @@ llm_structured = llm.with_structured_output(schema=AppointmentInfo)
 
 def evaluador_agendamiento(state: TallerState) -> dict:
     """React Agent para agendamiento con tools internos."""
+    new_state: TallerState = {}
+
     messages = state.get("messages", [])
     customer_name = state.get("customer_name", "")
     phone = state.get("phone", "")
@@ -61,10 +63,9 @@ def evaluador_agendamiento(state: TallerState) -> dict:
 
 ¿Puedes proporcionar esta información?"""
 
-        return {
-            "messages": [AIMessage(content=msg)],
-            "agendamiento_decision": "ir_a_agregador",
-        }
+        new_state["messages"] = [AIMessage(content=msg)]
+        new_state["agendamiento_decision"] = "ir_a_agregador"
+        return new_state
 
     # TURNO 2+: Procesar con tools
     if len(user_messages) >= 2:
@@ -93,17 +94,15 @@ def evaluador_agendamiento(state: TallerState) -> dict:
 👨‍🔧 Mecánico: {resultado['mecanico']}
 💰 Costo estimado: {resultado['costo_estimado']}"""
 
-                return {
-                    "messages": [AIMessage(content=confirmation_msg)],
-                    "agendamiento_decision": "ir_a_agregador",
-                    "booking_confirmed": True,
-                }
+                new_state["messages"] = [AIMessage(content=confirmation_msg)]
+                new_state["agendamiento_decision"] = "ir_a_agregador"
+                new_state["booking_confirmed"] = True
+                return new_state
             except Exception as e:
                 print(f"[EVALUADOR_AGENDAMIENTO] Error: {e}")
-                return {
-                    "messages": [AIMessage(content=f"Error al agendar: {str(e)}")],
-                    "agendamiento_decision": "ir_a_agregador",
-                }
+                new_state["messages"] = [AIMessage(content=f"Error al agendar: {str(e)}")]
+                new_state["agendamiento_decision"] = "ir_a_agregador"
+                return new_state
 
         # Si no tiene confirmación, extraer datos y consultar disponibilidad
         if not booking_confirmed:
@@ -143,13 +142,13 @@ Si NO encuentras algo, retorna string vacío "". NO uses valores por defecto."""
 
 ¿Puedes proporcionar esta información?"""
 
-                    result = {"messages": [AIMessage(content=ask_msg)]}
+                    new_state["messages"] = [AIMessage(content=ask_msg)]
                     if extracted.customer_name and extracted.customer_name.strip():
-                        result["customer_name"] = extracted.customer_name
+                        new_state["customer_name"] = extracted.customer_name
                     if extracted.phone and extracted.phone.strip():
-                        result["phone"] = extracted.phone
-                    result["agendamiento_decision"] = "ir_a_agregador"
-                    return result
+                        new_state["phone"] = extracted.phone
+                    new_state["agendamiento_decision"] = "ir_a_agregador"
+                    return new_state
 
                 # Consultar disponibilidad
                 print(f"[EVALUADOR_AGENDAMIENTO] Consultando disponibilidad...")
@@ -167,10 +166,9 @@ Horarios del taller:
 - Sábado: 09:00-14:00
 
 ¿Otra fecha/hora?"""
-                    return {
-                        "messages": [AIMessage(content=no_avail)],
-                        "agendamiento_decision": "ir_a_agregador",
-                    }
+                    new_state["messages"] = [AIMessage(content=no_avail)]
+                    new_state["agendamiento_decision"] = "ir_a_agregador"
+                    return new_state
 
                 # Disponibilidad OK
                 print("[EVALUADOR_AGENDAMIENTO] Disponibilidad confirmada")
@@ -185,26 +183,25 @@ Horarios del taller:
 
 ¿Confirmas? (Sí/Ok/Adelante)"""
 
-                return {
-                    "messages": [AIMessage(content=confirm_msg)],
-                    "customer_name": extracted.customer_name,
-                    "phone": extracted.phone,
-                    "appointment_data": {
-                        "preferred_date": extracted.preferred_date,
-                        "preferred_time": extracted.preferred_time,
-                    },
-                    "booking_confirmed": True,
-                    "agendamiento_decision": "ir_a_agregador",
+                new_state["messages"] = [AIMessage(content=confirm_msg)]
+                new_state["customer_name"] = extracted.customer_name
+                new_state["phone"] = extracted.phone
+                new_state["appointment_data"] = {
+                    "preferred_date": extracted.preferred_date,
+                    "preferred_time": extracted.preferred_time,
                 }
+                new_state["booking_confirmed"] = True
+                new_state["agendamiento_decision"] = "ir_a_agregador"
+                return new_state
 
             except Exception as e:
                 print(f"[EVALUADOR_AGENDAMIENTO] Error: {e}")
-                return {
-                    "messages": [AIMessage(content=f"Error: {str(e)}")],
-                    "agendamiento_decision": "ir_a_agregador",
-                }
+                new_state["messages"] = [AIMessage(content=f"Error: {str(e)}")]
+                new_state["agendamiento_decision"] = "ir_a_agregador"
+                return new_state
 
-    return {"agendamiento_decision": "ir_a_agregador"}
+    new_state["agendamiento_decision"] = "ir_a_agregador"
+    return new_state
 
 
 def route_agendamiento_main(state: TallerState) -> str:

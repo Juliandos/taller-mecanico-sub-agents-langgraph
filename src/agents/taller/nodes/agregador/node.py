@@ -14,6 +14,8 @@ def agregador(state: TallerState) -> dict:
       * 2ª vez+: Handoff definitivo
     - Detecta si no hay conclusión útil después de varios turnos
     """
+    new_state: TallerState = {}
+
     messages = state.get("messages", [])
     customer_name = state.get("customer_name", "")
     diagnostico_summary = state.get("diagnostico_summary", "")
@@ -56,24 +58,20 @@ def agregador(state: TallerState) -> dict:
     # CASO 1: Primera solicitud de transferencia a humano
     if requires_human and human_transfer_requests == 1:
         print("[AGREGADOR] 🤝 Primera solicitud de transferencia - Preguntando por diagnóstico")
-        messages_with_request = list(messages) + [AIMessage(content=FIRST_REQUEST_MSG)]
-        return {
-            "messages": messages_with_request,
-            "diagnostico_summary": FIRST_REQUEST_MSG,
-            "requires_human": False,  # No transfiere aún, reseta para siguiente turno
-            "human_transfer_requests": human_transfer_requests,
-        }
+        new_state["messages"] = list(messages) + [AIMessage(content=FIRST_REQUEST_MSG)]
+        new_state["diagnostico_summary"] = FIRST_REQUEST_MSG
+        new_state["requires_human"] = False
+        new_state["human_transfer_requests"] = human_transfer_requests
+        return new_state
 
     # CASO 2: Segunda solicitud de transferencia (o más)
     if requires_human and human_transfer_requests >= 2:
         print("[AGREGADOR] 🤝 Segunda (o más) solicitud - Handoff definitivo a humano")
-        messages_with_handoff = list(messages) + [AIMessage(content=HANDOFF_MSG)]
-        return {
-            "messages": messages_with_handoff,
-            "diagnostico_summary": HANDOFF_MSG,
-            "requires_human": True,
-            "human_transfer_requests": human_transfer_requests,
-        }
+        new_state["messages"] = list(messages) + [AIMessage(content=HANDOFF_MSG)]
+        new_state["diagnostico_summary"] = HANDOFF_MSG
+        new_state["requires_human"] = True
+        new_state["human_transfer_requests"] = human_transfer_requests
+        return new_state
 
     # CASO 3: Sin conclusión útil después de varios turnos (sin solicitud explícita)
     user_messages = [m for m in messages if getattr(m, "type", "") in ["human", "user"]]
@@ -82,18 +80,15 @@ def agregador(state: TallerState) -> dict:
     if (not requires_human and not diagnosis_complete and not booking_confirmed and
         len(user_messages) >= 5 and last_is_user):
         print("[AGREGADOR] 🤝 Detectada falta de conclusión después de varios turnos")
-        messages_with_handoff = list(messages) + [AIMessage(content=HANDOFF_MSG)]
-        return {
-            "messages": messages_with_handoff,
-            "diagnostico_summary": HANDOFF_MSG,
-            "requires_human": True,
-            "human_transfer_requests": 1,
-        }
+        new_state["messages"] = list(messages) + [AIMessage(content=HANDOFF_MSG)]
+        new_state["diagnostico_summary"] = HANDOFF_MSG
+        new_state["requires_human"] = True
+        new_state["human_transfer_requests"] = 1
+        return new_state
 
     # CASO NORMAL: Retornar estado consolidado
-    return {
-        "messages": messages,
-        "diagnostico_summary": diagnostico_summary,
-        "appointment_summary": appointment_summary,
-        "requires_human": False,
-    }
+    new_state["messages"] = messages
+    new_state["diagnostico_summary"] = diagnostico_summary
+    new_state["appointment_summary"] = appointment_summary
+    new_state["requires_human"] = False
+    return new_state

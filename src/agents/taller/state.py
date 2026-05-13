@@ -1,17 +1,14 @@
 """State definition for Taller Mecánico Agent"""
 
-from typing_extensions import TypedDict, Annotated
-from langchain_core.messages import AnyMessage
-import operator
+from langgraph.graph import MessagesState
 
 
-class TallerState(TypedDict):
-    """Estado compartido entre todos los nodos del agente."""
+class TallerState(MessagesState):
+    """Estado compartido entre todos los nodos del agente.
 
-    # Mensajes (acumulan)
-    # Esto se podría hacer también con MessageState y un método add_message, pero para simplicidad lo dejamos como una lista normal que se va acumulando. Se asume que cada nodo que produce mensajes los agrega a esta lista.
-    # Pero MessageState sería una opción más elegante y controlada, con métodos específicos para agregar mensajes de usuario, sistema, etc. Por ahora, se deja como una lista simple para enfocarnos en la lógica del taller.
-    messages: Annotated[list[AnyMessage], operator.add]
+    Hereda de MessagesState para manejo optimizado de mensajes con operator.add.
+    Los mensajes se acumulan automáticamente en cada nodo.
+    """
 
     # Datos del cliente
     customer_name: str

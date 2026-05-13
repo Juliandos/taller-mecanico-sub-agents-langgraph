@@ -17,6 +17,8 @@ def agent_booking(state: TallerState) -> dict:
     2. Consulta disponibilidad (simulado, RAG en FASE 2)
     3. Decide: agendar o transferir a humano
     """
+    new_state: TallerState = {}
+
     messages = state.get("messages", [])
     print("[AGENT_BOOKING] Iniciando recopilación de datos...")
 
@@ -65,11 +67,10 @@ def agent_booking(state: TallerState) -> dict:
 
     response = AIMessage(content=response_content)
 
-    return {
-        "messages": [response],
-        "booking_decision": decision,
-        "customer_name": customer_name,
-    }
+    new_state["messages"] = [response]
+    new_state["booking_decision"] = decision
+    new_state["customer_name"] = customer_name
+    return new_state
 
 
 def ejecutar_tool_booking(state: TallerState) -> dict:
@@ -80,12 +81,14 @@ def ejecutar_tool_booking(state: TallerState) -> dict:
     - Verificar inventario
     - Agendar cita
     """
+    new_state: TallerState = {}
+
     booking_decision = state.get("booking_decision", "recopilar_datos")
 
     print(f"[EJECUTAR_TOOL_BOOKING] Decision: {booking_decision}")
 
     if booking_decision != "agendar":
-        return {}
+        return new_state
 
     # Simulación: agendar cita
     confirmation_id = f"TM-{random.randint(10000, 99999)}"
@@ -109,17 +112,18 @@ def ejecutar_tool_booking(state: TallerState) -> dict:
 
     response = AIMessage(content=response_content)
 
-    return {
-        "messages": [response],
-        "appointment_summary": response_content,
-        "booking_confirmed": True,
-    }
+    new_state["messages"] = [response]
+    new_state["appointment_summary"] = response_content
+    new_state["booking_confirmed"] = True
+    return new_state
 
 
 def transferir_a_humano(state: TallerState) -> dict:
     """
     Transfiere a un asesor humano cuando no se puede agendar.
     """
+    new_state: TallerState = {}
+
     print("[TRANSFERIR_A_HUMANO] Iniciando transferencia...")
 
     ticket_id = f"HT-{random.randint(1000, 9999)}"
@@ -140,11 +144,10 @@ Un asesor revisará tu solicitud y te contactará pronto.
 
     response = AIMessage(content=response_content)
 
-    return {
-        "messages": [response],
-        "appointment_summary": response_content,
-        "requires_human": True,
-    }
+    new_state["messages"] = [response]
+    new_state["appointment_summary"] = response_content
+    new_state["requires_human"] = True
+    return new_state
 
 
 def route_booking(state: TallerState) -> str:

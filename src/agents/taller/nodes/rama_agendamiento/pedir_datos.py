@@ -14,6 +14,8 @@ def pedir_datos_faltantes(state: TallerState) -> dict:
     Envía un mensaje específico pidiendo solo los datos que faltan.
     Los datos faltantes se detectan del estado actual.
     """
+    new_state: TallerState = {}
+
     customer_name = state.get("customer_name", "")
     phone = state.get("phone", "")
     appointment_data = state.get("appointment_data", {})
@@ -159,7 +161,6 @@ Por favor, proporcióname esta información para poder proceder con el agendamie
 
     print(f"[PEDIR_DATOS] Enviando mensaje pidiendo: {campos_pedir}")
 
-    return {
-        "messages": [AIMessage(content=ask_msg)],
-        "missing_fields": [],  # Limpiar para evitar acumular en siguiente iteración
-    }
+    new_state["messages"] = [AIMessage(content=ask_msg)]
+    new_state["missing_fields"] = []
+    return new_state

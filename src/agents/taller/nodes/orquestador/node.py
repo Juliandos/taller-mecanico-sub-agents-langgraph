@@ -32,9 +32,11 @@ def orquestador(state: TallerState) -> dict:
 
     Retorna dict con los contadores actualizados.
     """
+    new_state: TallerState = {}
+
     messages = state.get("messages", [])
     if not messages:
-        return {}
+        return new_state
 
     last_msg = messages[-1]
     if isinstance(last_msg, dict):
@@ -46,7 +48,6 @@ def orquestador(state: TallerState) -> dict:
         content = " ".join(str(c) if not isinstance(c, str) else c for c in content)
 
     last_message = str(content).lower()
-    result = {}
 
     # Palabras clave para solicitud de humano
     human_keywords = [
@@ -73,17 +74,17 @@ def orquestador(state: TallerState) -> dict:
     # Detectar y contar
     if normalize_keywords(last_message, human_keywords):
         human_requests = state.get("human_requests", 0) + 1
-        result["human_requests"] = human_requests
+        new_state["human_requests"] = human_requests
         print(f"[ORQUESTADOR] 🤝 Solicitud de humano detectada (intento {human_requests})")
 
     if normalize_keywords(last_message, booking_keywords):
         booking_attempts = state.get("booking_attempts", 0) + 1
-        result["booking_attempts"] = booking_attempts
+        new_state["booking_attempts"] = booking_attempts
         print(f"[ORQUESTADOR] 📅 Solicitud de cita detectada (intento {booking_attempts})")
 
-    if result:
-        print(f"[ORQUESTADOR] Contadores actualizados: {result}")
-    return result
+    if new_state:
+        print(f"[ORQUESTADOR] Contadores actualizados: {new_state}")
+    return new_state
 
 
 def route_orchestrator(state: TallerState) -> str:

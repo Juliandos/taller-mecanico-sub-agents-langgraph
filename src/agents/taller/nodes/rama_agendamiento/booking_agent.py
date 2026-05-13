@@ -2,16 +2,18 @@
 
 from langchain.chat_models import init_chat_model
 from langchain_core.messages import AIMessage
+from agents.taller.state import TallerState
 from datetime import datetime, timedelta
 import random
 
 
-def booking_agent(state) -> dict:
+def booking_agent(state: TallerState) -> dict:
     """
     Agente que maneja el agendamiento.
     Usa LLM para generar la respuesta final de agendamiento.
     """
     llm = init_chat_model("openai:gpt-4o", temperature=0)
+    new_state: TallerState = {}
 
     appointment_data = state.get("appointment_data", {})
     service = state.get("damaged_part", "Diagnóstico y reparación")
@@ -73,23 +75,22 @@ Tu cita ha sido agendada correctamente. El objetivo de este chat ha sido cumplid
 
         print(f"[BOOKING_AGENT] ✅ Cita agendada para {appointment_date} a las {appointment_time}")
 
-        return {
-            "messages": [AIMessage(content=confirmation_msg)],
-            "booking_confirmed": True,
-            "appointment_summary": confirmation_msg,
-            "appointment_data": {
-                "confirmation_id": confirmation_id,
-                "customer_name": customer_name,
-                "phone": phone,
-                "date": appointment_date,
-                "time": appointment_time,
-                "service": service,
-            }
+        new_state["messages"] = [AIMessage(content=confirmation_msg)]
+        new_state["booking_confirmed"] = True
+        new_state["appointment_summary"] = confirmation_msg
+        new_state["appointment_data"] = {
+            "confirmation_id": confirmation_id,
+            "customer_name": customer_name,
+            "phone": phone,
+            "date": appointment_date,
+            "time": appointment_time,
+            "service": service,
         }
+        return new_state
+
     except Exception as e:
         print(f"[BOOKING_AGENT] ❌ Error: {e}")
         error_response = f"Hubo un problema al agendar tu cita: {str(e)}"
-        return {
-            "messages": [AIMessage(content=error_response)],
-            "requires_human": True,
-        }
+        new_state["messages"] = [AIMessage(content=error_response)]
+        new_state["requires_human"] = True
+        return new_state

@@ -56,7 +56,7 @@ def _parse_date_string(date_str: str, rejected_date: str = None) -> datetime:
         if rejected_parsed:
             relative_keywords = [
                 "el dia siguiente", "el siguiente", "dia despues", "dia siguiente",
-                "siguiente", "despues", "al dia siguiente", "al siguiente", "mañana entonces"
+                "siguiente", "despues", "al dia siguiente", "al siguiente", "mañana entonces", "mañana en ese caso", "dos días después", "tres días después", "cuatro días después", "cinco días después", "un dia antes", "dos días antes", "tres días antes", "cuatro días antes", "cinco días antes"
             ]
             for keyword in relative_keywords:
                 if keyword in date_lower:
@@ -162,7 +162,6 @@ def _validar_hora_laboral(hora_str: str, fecha_str: str = "", rejected_date: str
 
     return (True, "valid", "")
 
-
 def _detectar_seleccion_mecanico(last_human_msg: str, mechanics_list: list) -> tuple:
     """
     Detecta si el usuario seleccionó un mecánico sin usar LLM.
@@ -218,7 +217,6 @@ def _detectar_seleccion_mecanico(last_human_msg: str, mechanics_list: list) -> t
             return (mech["nombre"], "Diagnóstico")
 
     return (None, None)
-
 
 def extractor_datos(state: TallerState) -> dict:
     """
