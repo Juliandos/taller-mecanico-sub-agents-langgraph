@@ -107,41 +107,53 @@ ESTRUCTURA:
 
 Sé profesional pero amable. El usuario debe entender claramente qué está mal y por qué."""
 
-    contexto_rag = f"\nInformación técnica disponible:\n{rag_context}" if rag_context else ""
+    # SIEMPRE incluir información técnica
+    info_tecnica = rag_context if rag_context and rag_context.strip() else "Información técnica estándar del taller disponible"
+    contexto_rag = f"\nInformación técnica disponible:\n{info_tecnica}"
     prompt = f"Síntomas del cliente: {sintomas}{contexto_rag}"
 
     respuesta = _generar_respuesta_ia(system, prompt)
     return respuesta or "📋 **DIAGNÓSTICO PRELIMINAR**\n\nSe requiere una revisión detallada del vehículo.\n\n**¿Deseas proceder con la reparación?**\nResponde con: 'ok', 'perfecto', 'adelante', 'claro', 'dale' o 'vamos'"
 
 
-# def _generar_confirmacion_diagnostico(pieza_dañada: str, respuesta_cliente: str) -> str:
-#     """Genera una confirmación natural del diagnóstico aceptado."""
-#     system = """Eres un mecánico profesional que acaba de recibir la confirmación del cliente para proceder.
-# Genera una respuesta breve, profesional y amable que:
-# - Confirme que procederás con la reparación
-# - Mencione la pieza/problema identificado
-# - Pregunta sobre disponibilidad para agendar
-# Sé conversacional y cálido. No uses emojis ni formatos especiales."""
+def _generar_confirmacion_diagnostico(pieza_dañada: str = "", respuesta_cliente: str = "", es_refinado: bool = False) -> str:
+    """Genera una confirmación natural del diagnóstico aceptado + pregunta de agendamiento.
 
-#     prompt = f"El cliente confirmó proceder con: {pieza_dañada}. Respondió: '{respuesta_cliente}'"
-#     respuesta = _generar_respuesta_ia(system, prompt)
-#     return respuesta or f"Perfecto, procederemos con la reparación. ¿Cuándo te viene bien agendar?"
+    IMPORTANTE: Esta NO es una respuesta de saludo inicial. El cliente ya ha confirmado un diagnóstico
+    (preliminar o refinado) y ahora procedemos con el agendamiento.
+    """
+    tipo_diagnostico = "diagnóstico refinado" if es_refinado else "diagnóstico preliminar"
 
+    system = f"""Eres un mecánico profesional. El cliente acaba de confirmar el {tipo_diagnostico} y DECIDIÓ PROCEDER con la reparación.
 
-def _generar_confirmacion_diagnostico(pieza_dañada: str, respuesta_cliente: str = "") -> str:
-    """Genera una confirmación natural del diagnóstico aceptado + pregunta de agendamiento."""
-    system = """Eres un mecánico que acaba de recibir la confirmación del cliente para proceder.
-Genera una respuesta profesional y amable que:
-1. Confirme que procederemos con la reparación
-2. Mencione brevemente la pieza/problema identificado
-3. Pregunta CUÁNDO desea agendar la cita (fecha y hora)
+🚨 ACLARACIÓN CRÍTICA:
+- NO es inicio de conversación - estamos en MEDIO de la conversación
+- NO saludos genéricos ("Hola", "Buen día", "Me alegra", etc.)
+- NO explicaciones largas del diagnóstico (ya fue presentado)
+- SÍ reconoce su confirmación de forma BREVE y DIRECTA
+- SÍ pregunta INMEDIATAMENTE por fecha/hora de agendamiento
 
-Sé conversacional y cálido. Pide fecha y hora de forma natural en una sola pregunta."""
+ESTRUCTURA DE TU RESPUESTA:
+1. Línea 1: Confirmación breve (ej: "✅ Perfecto, procederemos")
+2. Línea 2: Si hay info sobre qué se repara: menciónalo brevemente
+3. Línea 3+: PREGUNTA DIRECTA por fecha y hora de agendamiento
 
-    contexto = f"Respondió: '{respuesta_cliente}'" if respuesta_cliente else ""
-    prompt = f"El cliente confirmó proceder con la reparación de: {pieza_dañada}. {contexto}"
+EJEMPLO CORRECTO:
+"✅ Perfecto, procederemos con la reparación del motor.
+
+¿Cuándo te gustaría agendar la cita? Dime la fecha y hora que te venga mejor."
+
+EVITAR:
+❌ "¡Hola! Me alegra que hayas decidido..."
+❌ "Basándome en el diagnóstico que hicimos..."
+❌ Saludos, pequeñas charlas, o repetir el diagnóstico"""
+
+    contexto = f"Cliente confirmó con: '{respuesta_cliente}'" if respuesta_cliente else "Cliente confirmó el diagnóstico"
+    pieza_text = f"para la reparación de {pieza_dañada}" if pieza_dañada else ""
+    prompt = f"{contexto}. {pieza_text}"
+
     respuesta = _generar_respuesta_ia(system, prompt)
-    return respuesta or f"✅ Perfecto, procederemos con la reparación. ¿Cuándo te gustaría agendar la cita? Por favor, dime la fecha y hora preferida."
+    return respuesta or f"✅ Perfecto, procederemos con la reparación.\n\n¿Cuándo te gustaría agendar la cita? Por favor, dime la fecha y hora preferida."
 
 
 def _detectar_intension_agendar(ultimo_mensaje: str) -> bool:
@@ -164,9 +176,46 @@ def _detectar_intension_agendar(ultimo_mensaje: str) -> bool:
     return _detectar_palabra_clave(ultimo_mensaje, keywords_agendar)
 
 
+def _detectar_sistema_vehiculo(texto: str) -> str:
+    """Detecta a qué sistema del vehículo se refieren los síntomas."""
+    sistemas = {
+        "motor": ["motor", "cilindro", "pistón", "bomba", "combustible", "inyector", "filtro aire", "bujía", "chispa", "encendido"],
+        "frenos": ["freno", "pastilla", "disco", "cilindro maestro", "pastillas", "pinza", "frenada", "frenando"],
+        "transmisión": ["transmisión", "cambios", "velocidad", "embrague", "clutch", "marchas", "automática", "manual"],
+        "dirección": ["dirección", "volante", "giro", "timón", "estéreo"],
+        "eléctrica": ["eléctrica", "batería", "alternador", "fusible", "luces", "encendido", "arranque", "marcha"],
+        "suspensión": ["suspensión", "amortiguador", "resorte", "ballesta", "desagüe", "rebote", "saltos", "botes"],
+        "llantas": ["llanta", "neumático", "rueda", "caucho", "goma", "llantas", "balanceo", "alineación"],
+        "aire": ["aire", "clima", "frío", "calor", "refrigeración", "compresor", "condensador"],
+    }
+
+    texto_norm = _normalizar_texto(texto)
+
+    for sistema, palabras_clave in sistemas.items():
+        for palabra in palabras_clave:
+            if palabra in texto_norm:
+                return sistema
+
+    return ""
+
+
+def _detectar_cambio_sistema(ultimo_mensaje: str, sistema_anterior: str) -> bool:
+    """Detecta si el usuario cambió a un sistema completamente diferente."""
+    if not sistema_anterior:
+        return False
+
+    nuevo_sistema = _detectar_sistema_vehiculo(ultimo_mensaje)
+
+    if not nuevo_sistema:
+        return False
+
+    # Si cambió de sistema, es razón suficiente para hacer nueva búsqueda RAG
+    return nuevo_sistema != sistema_anterior
+
+
 def evaluador_pieza_dañada(state: TallerState) -> dict:
     """
-    React Agent para diagnóstico.
+    ReAc Agent para diagnóstico.
     Absorbe: generador_conversacion + evaluador + generar_resumen
 
     Turno 1 (1 msg humano): Detecta intención de agendar o genera pregunta empática
@@ -175,16 +224,17 @@ def evaluador_pieza_dañada(state: TallerState) -> dict:
     """
     messages = state.get("messages", [])
     rag_context = state.get("rag_context", "")
-    rag_calls = state.get("rag_calls", 0)
     diagnosis_complete = state.get("diagnosis_complete", False)
     client_confirmed_diagnosis = state.get("client_confirmed_diagnosis", False)
     damaged_part = state.get("damaged_part", "")
+    initial_rag_system = state.get("initial_rag_system", "")
 
     print(f"\n[EVALUADOR] ──────────────────────────────────────")
     print(f"[EVALUADOR] Estado actual:")
     print(f"  - diagnosis_complete: {diagnosis_complete}")
     print(f"  - client_confirmed_diagnosis: {client_confirmed_diagnosis}")
-    print(f"  - rag_calls: {rag_calls}")
+    print(f"  - has_rag_context: {bool(rag_context)}")
+    print(f"  - initial_rag_system: {initial_rag_system}")
     print(f"  - damaged_part: {damaged_part}")
 
     # Contar mensajes humanos
@@ -345,7 +395,18 @@ Sé conversacional y cálido, no formal. No uses formatos con emojis o líneas, 
             print("[EVALUADOR] ✅ Cliente confirmó el diagnóstico → IR A AGENDAMIENTO")
 
             pieza = state.get('damaged_part', 'el trabajo identificado')
-            confirmacion_msg = _generar_confirmacion_diagnostico(pieza, last_msg)
+            # Detectar si es diagnóstico refinado revisando mensajes anteriores
+            es_refinado = False
+            if messages:
+                for m in reversed(messages):
+                    content = _extract_content(m.get("content", "") if isinstance(m, dict) else (m.content if hasattr(m, "content") else ""))
+                    if "DIAGNÓSTICO REFINADO" in content:
+                        es_refinado = True
+                        break
+                    elif "DIAGNÓSTICO PRELIMINAR" in content:
+                        break
+
+            confirmacion_msg = _generar_confirmacion_diagnostico(pieza, last_msg, es_refinado)
 
             result = {
                 "messages": [AIMessage(content=confirmacion_msg)],
@@ -385,12 +446,14 @@ Sé conversacional y cálido, no formal. No uses formatos con emojis o líneas, 
         if not has_confirmation:
             print("[EVALUADOR] 📋 Sin confirmación detectada, evaluando opciones...")
 
-            # Caso A: Sin diagnóstico aún → buscar RAG si es primera búsqueda
-            if not diagnosis_complete and rag_calls == 0:
-                print("[EVALUADOR] 🔍 CASO A: Sin diagnóstico + rag_calls=0 → BUSCAR RAG")
+            # Caso A: Sin diagnóstico aún → buscar RAG si es primera búsqueda (sin contexto previo)
+            if not diagnosis_complete and not rag_context:
+                print("[EVALUADOR] 🔍 CASO A: Sin diagnóstico + sin rag_context → BUSCAR RAG (ÚNICA BÚSQUEDA)")
+                # Detectar sistema inicial para luego saber si cambió
+                sistema = _detectar_sistema_vehiculo(last_msg)
                 result = {
                     "diagnostico_decision": "buscar_info",
-                    "rag_calls": rag_calls + 1,
+                    "initial_rag_system": sistema or "general",
                 }
                 print(f"[EVALUADOR] Retornando: {list(result.keys())}")
                 return result
@@ -417,85 +480,75 @@ Sé conversacional y cálido, no formal. No uses formatos con emojis o líneas, 
                 print(f"[EVALUADOR] Retornando: {list(result.keys())}")
                 return result
 
-            # Caso C: Diagnóstico completo pero NO confirma + síntomas nuevos → buscar info para refinar
-            if diagnosis_complete and rag_calls < 3:
-                print("[EVALUADOR] 🔄 CASO C: diagnosis_complete + rag_calls < 3")
-                # Si ya tiene contexto RAG → generar diagnóstico mejorado
-                if rag_context:
-                    print(f"[EVALUADOR] 📊 Regenerando diagnóstico refinado ({rag_calls}/3)")
+            # Caso C: Diagnóstico completo pero NO confirma + síntomas nuevos → reutilizar RAG o buscar si cambió sistema
+            if diagnosis_complete and rag_context:
+                print("[EVALUADOR] 🔄 CASO C: diagnosis_complete + tiene rag_context")
+
+                # Detectar si el usuario cambió a un sistema diferente
+                cambio_sistema = _detectar_cambio_sistema(last_msg, initial_rag_system)
+
+                if cambio_sistema:
+                    print(f"[EVALUADOR] 🔍 Usuario cambió de sistema ({initial_rag_system} → nuevo) → BUSCAR RAG NUEVAMENTE")
+                    nuevo_sistema = _detectar_sistema_vehiculo(last_msg)
+                    result = {
+                        "diagnostico_decision": "buscar_info",
+                        "initial_rag_system": nuevo_sistema or "general",
+                    }
+                    print(f"[EVALUADOR] Retornando: {list(result.keys())}")
+                    return result
+                else:
+                    # REUTILIZAR contexto RAG - generar diagnóstico refinado
+                    print(f"[EVALUADOR] 📊 Mismo sistema, reutilizando rag_context → DIAGNÓSTICO REFINADO")
                     sintomas = " ".join([
                         _extract_content(m.get("content", "") if isinstance(m, dict) else (m.content if hasattr(m, "content") else ""))
                         for m in messages if isinstance(m, dict) and m.get("type") == "human" or (hasattr(m, "type") and m.type == "human")
                     ])
 
                     system = """Eres un mecánico experto. Ya hiciste un diagnóstico inicial y ahora tienes información técnica adicional.
-Regenera un diagnóstico REFINADO que:
-- Incluya el nuevo contexto técnico
-- Sea más preciso que el anterior
-- Señale si hay problemas adicionales encontrados
 
-AL FINAL, siempre agrega:
+ESTRUCTURA:
+1. Comienza con el título: 📋 **DIAGNÓSTICO REFINADO**
+2. Incluye:
+   - Piezas dañadas identificadas (basándote en síntomas e info técnica)
+   - Causa probable mejorada con la información técnica
+   - Urgencia de la reparación
+3. AL FINAL, siempre agrega:
+
    **¿Deseas proceder con la reparación?**
    Responde con: "ok", "perfecto", "adelante", "claro", "dale" o "vamos"
 
-Sé profesional pero natural. No uses emojis ni formatos especiales."""
+Sé profesional y amable. SIEMPRE consulta la información técnica disponible."""
 
-                    prompt = f"Síntomas: {sintomas}\nInformación técnica adicional: {rag_context}"
+                    # SIEMPRE proporcionar información técnica, incluso si está vacía
+                    info_tecnica = rag_context if rag_context and rag_context.strip() else "Basándome en información técnica estándar del taller"
+                    prompt = f"Síntomas: {sintomas}\nInformación técnica: {info_tecnica}"
                     resumen = _generar_respuesta_ia(system, prompt)
 
                     if not resumen:
-                        resumen = "Basándome en información adicional, refino el diagnóstico anterior.\n\n**¿Deseas proceder con la reparación?**\nResponde con: 'ok', 'perfecto', 'adelante', 'claro', 'dale' o 'vamos'"
+                        resumen = "Basándome en información técnica disponible, refino el diagnóstico anterior.\n\n**¿Deseas proceder con la reparación?**\nResponde con: 'ok', 'perfecto', 'adelante', 'claro', 'dale' o 'vamos'"
 
                     result = {
                         "messages": [AIMessage(content=resumen)],
                         "diagnostico_decision": "ir_a_agregador",
                         "diagnostico_summary": resumen,
                         "damaged_part": "Diagnóstico refinado",
-                        "rag_context": "",
                     }
                     print(f"[EVALUADOR] Retornando: {list(result.keys())}")
                     return result
 
-                # Si no tiene contexto RAG aún → buscar
-                else:
-                    print(f"[EVALUADOR] 🔍 Sin rag_context, buscando información ({rag_calls}/3)")
-                    result = {
-                        "diagnostico_decision": "buscar_info",
-                        "rag_calls": rag_calls + 1,
-                    }
-                    print(f"[EVALUADOR] Retornando: {list(result.keys())}")
-                    return result
-
-            # Caso D: Alcanzó máx búsquedas o sin RAG → mostrar diagnóstico final
-            else:
-                print("[EVALUADOR] ⛔ CASO D: Alcanzó máx búsquedas")
-                sintomas = " ".join([
-                    _extract_content(m.get("content", "") if isinstance(m, dict) else (m.content if hasattr(m, "content") else ""))
-                    for m in messages if isinstance(m, dict) and m.get("type") == "human" or (hasattr(m, "type") and m.type == "human")
-                ])
-
-                system = """Eres un mecánico experto que ha completado un diagnóstico exhaustivo.
-Genera un diagnóstico FINAL que resuma:
-- Los problemas identificados (basándote en los síntomas)
-- La causa probable
-- La urgencia
-- Un llamado a acción para proceder
-Sé profesional pero amable. No uses emojis ni formatos especiales."""
-
-                resumen = _generar_respuesta_ia(system, f"Síntomas descritos: {sintomas}")
-
-                if not resumen:
-                    resumen = "Basándome en todo lo revisado, aquí está mi diagnóstico final. ¿Deseas proceder con la reparación?"
-
+            # Caso D: Fallback - sin RAG context aún → buscar RAG (debería haber sido CASO A)
+            if not rag_context:
+                print("[EVALUADOR] 🔍 CASO D: Fallback - sin rag_context aún, buscando RAG")
+                sistema = _detectar_sistema_vehiculo(last_msg)
                 result = {
-                    "messages": [AIMessage(content=resumen)],
-                    "diagnostico_decision": "ir_a_agregador",
-                    "diagnostico_summary": resumen,
-                    "diagnosis_complete": True,
-                    "damaged_part": "Diagnóstico final",
+                    "diagnostico_decision": "buscar_info",
+                    "initial_rag_system": sistema or "general",
                 }
                 print(f"[EVALUADOR] Retornando: {list(result.keys())}")
                 return result
+            else:
+                print("[EVALUADOR] ⛔ CASO DEFAULT: No coincidió ningún criterio, retornando agregador")
+                return {"diagnostico_decision": "ir_a_agregador"}
 
     print("[EVALUADOR] ❌ Ningún caso coincidió, retorno por defecto")
     return {"diagnostico_decision": "ir_a_agregador"}

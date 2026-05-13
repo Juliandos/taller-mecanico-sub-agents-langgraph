@@ -7,7 +7,7 @@ from langgraph.graph import StateGraph, START, END
 from agents.taller.state import TallerState
 
 # Importar nodos
-from agents.taller.nodes.orquestador.node import orquestador, route_orchestrator
+from agents.taller.nodes.orquestador.node import orquestador, route_orchestrator, route_orchestrator
 from agents.taller.nodes.rama_diagnostico.node import (
     evaluador_pieza_dañada,
     buscar_rag_mecanica,

@@ -35,11 +35,12 @@ TIME_PERIODS = {
     "temprano": {"start": 8, "end": 10, "label": "08:00 - 10:00"},
 }
 
-def _parse_date_string(date_str: str) -> datetime:
+def _parse_date_string(date_str: str, rejected_date: str = None) -> datetime:
     """
     Convierte strings de fecha a datetime.
-    Soporta: "mañana", "18 de mayo", "martes 19", "2026-05-15", etc.
+    Soporta: "mañana", "18 de mayo", "martes 19", "el día siguiente", "2026-05-15", etc.
     Retorna None si no puede parsear.
+    Si rejected_date se proporciona, puede interpretar "el día siguiente" relativamente.
     """
     if not date_str or date_str.strip() == "":
         return None
@@ -49,8 +50,20 @@ def _parse_date_string(date_str: str) -> datetime:
     # Reemplazar caracteres especiales
     date_lower = date_lower.replace("á", "a").replace("é", "e").replace("í", "i").replace("ó", "o").replace("ú", "u")
 
+    # Caso 0: Fechas relativas al día rechazado (cuando hay festivo)
+    if rejected_date:
+        rejected_parsed = _parse_date_string(rejected_date, None)
+        if rejected_parsed:
+            relative_keywords = [
+                "el dia siguiente", "el siguiente", "dia despues", "dia siguiente",
+                "siguiente", "despues", "al dia siguiente", "al siguiente", "mañana entonces"
+            ]
+            for keyword in relative_keywords:
+                if keyword in date_lower:
+                    return rejected_parsed + timedelta(days=1)
+
     # Caso 1: "mañana" = hoy + 1 día
-    if date_lower == "manana" or date_lower == "mañana":
+    if date_lower == "manana":
         return TODAY + timedelta(days=1)
 
     # Caso 2: Formato ISO "2026-05-15"
@@ -103,7 +116,7 @@ def _check_holiday(date: datetime) -> tuple:
         return (True, holiday_name)
     return (False, "")
 
-def _validar_hora_laboral(hora_str: str, fecha_str: str = "") -> tuple:
+def _validar_hora_laboral(hora_str: str, fecha_str: str = "", rejected_date: str = None) -> tuple:
     """
     Valida que la hora esté dentro del horario laboral.
     Retorna (is_valid: bool, error_type: str, available_times: str)
@@ -117,7 +130,7 @@ def _validar_hora_laboral(hora_str: str, fecha_str: str = "") -> tuple:
 
     # Primero, verificar si la fecha es festivo
     if fecha_str:
-        fecha_parsed = _parse_date_string(fecha_str)
+        fecha_parsed = _parse_date_string(fecha_str, rejected_date)
         if fecha_parsed:
             is_hol, holiday_name = _check_holiday(fecha_parsed)
             if is_hol:
@@ -327,6 +340,9 @@ Si NO encuentras algo, retorna un string vacío "" para ese campo. NO uses valor
 
         print(f"[EXTRACTOR_DATOS] Extraído: nombre='{schema.customer_name}' | teléfono='{schema.phone}' | fecha='{schema.preferred_date}' | hora='{schema.preferred_time}'")
 
+        # Obtener la fecha rechazada anterior (si la hay)
+        rejected_date = state.get("rejected_date", None)
+
         # Verificar qué datos faltan o son inválidos
         missing_fields = []
         if not schema.customer_name or schema.customer_name.strip() == "":
@@ -338,10 +354,11 @@ Si NO encuentras algo, retorna un string vacío "" para ese campo. NO uses valor
         if not schema.preferred_time or schema.preferred_time.strip() == "":
             missing_fields.append("preferred_time")
         else:
-            # Validar hora considerando la fecha
+            # Validar hora considerando la fecha (pasando rejected_date para interpretar "el día siguiente")
             is_valid, error_type, extra_info = _validar_hora_laboral(
                 schema.preferred_time,
-                schema.preferred_date
+                schema.preferred_date,
+                rejected_date
             )
             if not is_valid:
                 print(f"[EXTRACTOR_DATOS] ⚠️ Error de hora/fecha: {error_type} - {schema.preferred_time}")
@@ -413,6 +430,12 @@ Si NO encuentras algo, retorna un string vacío "" para ese campo. NO uses valor
                 "preferred_time": schema.preferred_time.strip() if schema.preferred_time else "",
                 "service": damaged_part,
             }
+            # Si hay un error de festivo, guardar la fecha rechazada para interpretar "el día siguiente"
+            if any(f.startswith("preferred_date_holiday:") for f in missing_fields):
+                fecha_parsed = _parse_date_string(schema.preferred_date, rejected_date)
+                if fecha_parsed:
+                    result["rejected_date"] = fecha_parsed.strftime("%Y-%m-%d")
+                    print(f"[EXTRACTOR_DATOS] 📅 Fecha rechazada guardada: {result['rejected_date']}")
             return result
 
         # Si tenemos TODOS los datos, retornar datos completos

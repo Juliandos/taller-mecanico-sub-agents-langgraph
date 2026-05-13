@@ -62,7 +62,14 @@ def booking_agent(state) -> dict:
 - Llega 15 minutos antes
 - Guarda tu número de confirmación
 - Para cambios: {phone} o al 300-AUTO-PRO
-- Cancelaciones con 24h de anticipación"""
+- Cancelaciones con 24h de anticipación
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ **OBJETIVO COMPLETADO**
+
+Tu cita ha sido agendada correctamente. El objetivo de este chat ha sido cumplido.
+
+🔄 **Para iniciar una nueva conversación**, por favor **recarga la página** (F5) o abre una nueva pestaña del chat."""
 
         print(f"[BOOKING_AGENT] ✅ Cita agendada para {appointment_date} a las {appointment_time}")
 

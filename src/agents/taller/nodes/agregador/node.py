@@ -46,7 +46,11 @@ def agregador(state: TallerState) -> dict:
     HANDOFF_MSG = (
         "De acuerdo. Un asesor humano se comunicará contigo pronto. "
         "Mientras tanto, ten en cuenta los detalles que nos compartiste. "
-        "Gracias por tu paciencia."
+        "Gracias por tu paciencia.\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "✅ **TRANSFERENCIA COMPLETADA**\n\n"
+        "Has sido transferido a un asesor humano. El objetivo de este chat ha sido cumplido.\n\n"
+        "🔄 **Para iniciar una nueva conversación**, por favor **recarga la página** (F5) o abre una nueva pestaña del chat."
     )
 
     # CASO 1: Primera solicitud de transferencia a humano

@@ -114,6 +114,8 @@ Responde con el número (1-5) o di "cualquiera" si cualquiera de ellos te parece
         # La fecha seleccionada es festivo
         ask_msg = f"""Lo siento, este día es festivo ({holiday_name}) y estamos cerrados.{disponibilidad_texto}
 
+Por favor, sugiere otra fecha. Preferiblemente menciona el día de la semana y el número (ej: martes 19, 19 de mayo), o cualquier otra forma específica que tengas en mente. Aceptamos varios formatos, solo queremos asegurar que nos entiendamos bien.
+
 ¿Cuál sería una fecha más conveniente para ti?"""
 
     elif necesita_hora_especifica:
