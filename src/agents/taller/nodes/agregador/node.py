@@ -2,6 +2,11 @@
 
 from langchain_core.messages import AIMessage
 from agents.taller.state import TallerState
+from agents.taller.prompts import (
+    AGREGADOR_PRIMER_REQUEST,
+    AGREGADOR_HANDOFF_FINAL,
+    AGREGADOR_HANDOFF_AUTOMATICO,
+)
 
 
 def agregador(state: TallerState) -> dict:
@@ -38,50 +43,33 @@ def agregador(state: TallerState) -> dict:
     if customer_name:
         print(f"[AGREGADOR] Cliente: {customer_name}")
 
-    # Mensajes predefinidos
-    FIRST_REQUEST_MSG = (
-        "Entiendo que prefieres hablar con un asesor. "
-        "Antes de transferirte, ¿podrías describir brevemente qué problema tiene tu vehículo? "
-        "Con eso podré ayudarte mejor cuando hables con el equipo."
-    )
-
-    HANDOFF_MSG = (
-        "De acuerdo. Un asesor humano se comunicará contigo pronto. "
-        "Mientras tanto, ten en cuenta los detalles que nos compartiste. "
-        "Gracias por tu paciencia.\n\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "✅ **TRANSFERENCIA COMPLETADA**\n\n"
-        "Has sido transferido a un asesor humano. El objetivo de este chat ha sido cumplido.\n\n"
-        "🔄 **Para iniciar una nueva conversación**, por favor **recarga la página** (F5) o abre una nueva pestaña del chat."
-    )
-
     # CASO 1: Primera solicitud de transferencia a humano
     if requires_human and human_transfer_requests == 1:
-        print("[AGREGADOR] 🤝 Primera solicitud de transferencia - Preguntando por diagnóstico")
-        new_state["messages"] = list(messages) + [AIMessage(content=FIRST_REQUEST_MSG)]
-        new_state["diagnostico_summary"] = FIRST_REQUEST_MSG
+        print("[AGREGADOR] 🤝 Primera solicitud - pidiendo diagnóstico")
+        new_state["messages"] = list(messages) + [AIMessage(content=AGREGADOR_PRIMER_REQUEST)]
+        new_state["diagnostico_summary"] = AGREGADOR_PRIMER_REQUEST
         new_state["requires_human"] = False
         new_state["human_transfer_requests"] = human_transfer_requests
         return new_state
 
     # CASO 2: Segunda solicitud de transferencia (o más)
     if requires_human and human_transfer_requests >= 2:
-        print("[AGREGADOR] 🤝 Segunda (o más) solicitud - Handoff definitivo a humano")
-        new_state["messages"] = list(messages) + [AIMessage(content=HANDOFF_MSG)]
-        new_state["diagnostico_summary"] = HANDOFF_MSG
+        print("[AGREGADOR] 🤝 Handoff definitivo a humano")
+        new_state["messages"] = list(messages) + [AIMessage(content=AGREGADOR_HANDOFF_FINAL)]
+        new_state["diagnostico_summary"] = AGREGADOR_HANDOFF_FINAL
         new_state["requires_human"] = True
         new_state["human_transfer_requests"] = human_transfer_requests
         return new_state
 
-    # CASO 3: Sin conclusión útil después de varios turnos (sin solicitud explícita)
+    # CASO 3: Sin conclusión útil después de varios turnos
     user_messages = [m for m in messages if getattr(m, "type", "") in ["human", "user"]]
     last_is_user = messages and getattr(messages[-1], "type", "") in ["human", "user"]
 
     if (not requires_human and not diagnosis_complete and not booking_confirmed and
         len(user_messages) >= 5 and last_is_user):
-        print("[AGREGADOR] 🤝 Detectada falta de conclusión después de varios turnos")
-        new_state["messages"] = list(messages) + [AIMessage(content=HANDOFF_MSG)]
-        new_state["diagnostico_summary"] = HANDOFF_MSG
+        print("[AGREGADOR] 🤝 Falta de conclusión - handoff automático")
+        new_state["messages"] = list(messages) + [AIMessage(content=AGREGADOR_HANDOFF_FINAL)]
+        new_state["diagnostico_summary"] = AGREGADOR_HANDOFF_FINAL
         new_state["requires_human"] = True
         new_state["human_transfer_requests"] = 1
         return new_state

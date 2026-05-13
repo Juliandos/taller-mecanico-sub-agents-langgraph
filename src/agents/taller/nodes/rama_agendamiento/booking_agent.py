@@ -1,6 +1,5 @@
 """Agente de agendamiento para el taller mecánico."""
 
-from langchain.chat_models import init_chat_model
 from langchain_core.messages import AIMessage
 from agents.taller.state import TallerState
 from datetime import datetime, timedelta
@@ -8,11 +7,7 @@ import random
 
 
 def booking_agent(state: TallerState) -> dict:
-    """
-    Agente que maneja el agendamiento.
-    Usa LLM para generar la respuesta final de agendamiento.
-    """
-    llm = init_chat_model("openai:gpt-4o", temperature=0)
+    """Agente que crea la confirmación de cita con datos recopilados."""
     new_state: TallerState = {}
 
     appointment_data = state.get("appointment_data", {})
@@ -31,49 +26,40 @@ def booking_agent(state: TallerState) -> dict:
     print(f"[BOOKING_AGENT] Agendando cita para {customer_name} ({phone})")
 
     try:
-        # Generar la confirmación de cita directamente
         confirmation_id = f"TM-{random.randint(10000, 99999)}"
 
-        # Parsear fecha y hora si es posible
+        # Parsear fecha y hora
         appointment_date = preferred_date if preferred_date and preferred_date != "próximos días" else "2026-05-15"
         appointment_time = preferred_time if preferred_time and preferred_time != "horario disponible" else "14:00"
 
-        # Si el usuario dijo "mañana", usamos mañana
         if "mañana" in str(preferred_date).lower():
             tomorrow = datetime.now() + timedelta(days=1)
             appointment_date = tomorrow.strftime("%Y-%m-%d")
 
-        # Si dijo "tarde", ajustar hora
         if "tarde" in str(preferred_time).lower():
             appointment_time = "15:00"
         elif "mañana" in str(preferred_time).lower():
             appointment_time = "10:00"
 
-        confirmation_msg = f"""✅ ¡CITA AGENDADA EXITOSAMENTE!
+        # Confirmación concisa
+        confirmation_msg = f"""✅ ¡CITA AGENDADA!
 
 📋 Confirmación: {confirmation_id}
 👤 Cliente: {customer_name}
-📱 Teléfono: {phone}
-📅 Fecha: {appointment_date}
-🕐 Hora: {appointment_time}
+📅 Fecha: {appointment_date} a las {appointment_time}
 🔧 Servicio: {service}
 👨‍🔧 Mecánico: {mechanic_name}
-💰 Costo estimado: $180,000-350,000
+💰 Costo: $180,000-350,000
 
-⚠️ INSTRUCCIONES:
-- Llega 15 minutos antes
-- Guarda tu número de confirmación
-- Para cambios: {phone} o al 300-AUTO-PRO
-- Cancelaciones con 24h de anticipación
+⚠️ Instrucciones:
+• Llega 15 minutos antes
+• Guarda tu confirmación
+• Cambios: 300-AUTO-PRO
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-✅ **OBJETIVO COMPLETADO**
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ OBJETIVO COMPLETADO - Para nueva conversación, recarga la página (F5)"""
 
-Tu cita ha sido agendada correctamente. El objetivo de este chat ha sido cumplido.
-
-🔄 **Para iniciar una nueva conversación**, por favor **recarga la página** (F5) o abre una nueva pestaña del chat."""
-
-        print(f"[BOOKING_AGENT] ✅ Cita agendada para {appointment_date} a las {appointment_time}")
+        print(f"[BOOKING_AGENT] ✅ {appointment_date} {appointment_time}")
 
         new_state["messages"] = [AIMessage(content=confirmation_msg)]
         new_state["booking_confirmed"] = True
@@ -85,12 +71,12 @@ Tu cita ha sido agendada correctamente. El objetivo de este chat ha sido cumplid
             "date": appointment_date,
             "time": appointment_time,
             "service": service,
+            "mechanic": mechanic_name,
         }
         return new_state
 
     except Exception as e:
-        print(f"[BOOKING_AGENT] ❌ Error: {e}")
-        error_response = f"Hubo un problema al agendar tu cita: {str(e)}"
-        new_state["messages"] = [AIMessage(content=error_response)]
+        print(f"[BOOKING_AGENT] ❌ {e}")
+        new_state["messages"] = [AIMessage(content="Problema al agendar. Transferiendo a humano...")]
         new_state["requires_human"] = True
         return new_state

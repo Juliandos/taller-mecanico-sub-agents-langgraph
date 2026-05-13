@@ -5,8 +5,14 @@ import unicodedata
 from agents.taller.state import TallerState
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain.chat_models import init_chat_model
+from agents.taller.prompts import (
+    DIAGNOSTICO_PREGUNTAS_DIAGNOSTICAS,
+    DIAGNOSTICO_GENERAR_DIAGNOSTICO,
+    DIAGNOSTICO_CONFIRMACION,
+    KEYWORDS_CONFIRMACION_DIAGNOSTICO,
+    KEYWORDS_RECHAZO_DIAGNOSTICO,
+)
 
-# Inicializar LLM para generar respuestas dinámicas
 llm = init_chat_model("openai:gpt-4o", temperature=0.7)
 
 
@@ -64,92 +70,42 @@ def _crear_patron_flexible(palabra: str) -> str:
     return r'\b' + patron + r'\b'
 
 
-def _generar_respuesta_ia(sistema: str, usuario: str) -> str:
-    """Genera una respuesta con IA de forma natural."""
+def _generar_respuesta_ia(system_or_prompt: str, usuario: str = "") -> str:
+    """Genera respuesta con IA. El prompt puede incluir placeholders ya llenados."""
     try:
-        respuesta = llm.invoke([
-            ("system", sistema),
-            ("human", usuario)
-        ])
+        messages = [("system", system_or_prompt)]
+        if usuario:
+            messages.append(("human", usuario))
+        respuesta = llm.invoke(messages)
         return respuesta.content if hasattr(respuesta, 'content') else str(respuesta)
     except Exception as e:
-        print(f"[IA_ERROR] Error generando respuesta: {e}")
+        print(f"[IA_ERROR] {e}")
         return None
 
 
 def _generar_preguntas_diagnostico(ultimo_mensaje: str) -> str:
     """Genera preguntas diagnósticas personalizadas basadas en lo que el cliente dice."""
-    system = """Eres un mecánico amable y profesional de un taller de autos.
-El cliente acaba de describir un problema con su vehículo.
-Genera 3-4 preguntas diagnósticas ESPECÍFICAS y naturales basadas en lo que describió.
-Las preguntas deben ser empáticas, profesionales y orientadas a entender mejor el problema.
-Sé conversacional, no hagas una lista numerada, sino que fluya naturalmente."""
-
-    respuesta = _generar_respuesta_ia(system, f"El cliente dice: {ultimo_mensaje}")
-    return respuesta or "Entiendo tu problema. ¿Cuándo comenzó? ¿Es continuo o intermitente? ¿Has notado otros síntomas?"
+    prompt = DIAGNOSTICO_PREGUNTAS_DIAGNOSTICAS.format(sintoma=ultimo_mensaje)
+    respuesta = _generar_respuesta_ia(prompt, "")
+    return respuesta or "Entiendo. ¿Cuándo comenzó? ¿Es continuo o intermitente? ¿Otros síntomas?"
 
 
 def _generar_diagnostico_basado_en_sintomas(sintomas: str, rag_context: str = "") -> str:
     """Genera un diagnóstico personalizado basado en los síntomas del cliente."""
-    system = """Eres un mecánico experto en diagnóstico de vehículos.
-Basándote en los síntomas descritos, genera un diagnóstico preliminar REALISTA.
-
-ESTRUCTURA:
-1. Comienza con el título: 📋 **DIAGNÓSTICO PRELIMINAR**
-2. Incluye:
-   - Posibles piezas dañadas (sé específico basándote en los síntomas)
-   - Causa probable
-   - Urgencia (baja, media, media-alta, alta)
-3. AL FINAL, siempre agrega:
-
-   **¿Deseas proceder con la reparación?**
-   Responde con: "ok", "perfecto", "adelante", "claro", "dale" o "vamos"
-
-Sé profesional pero amable. El usuario debe entender claramente qué está mal y por qué."""
-
-    # SIEMPRE incluir información técnica
-    info_tecnica = rag_context if rag_context and rag_context.strip() else "Información técnica estándar del taller disponible"
-    contexto_rag = f"\nInformación técnica disponible:\n{info_tecnica}"
-    prompt = f"Síntomas del cliente: {sintomas}{contexto_rag}"
-
-    respuesta = _generar_respuesta_ia(system, prompt)
-    return respuesta or "📋 **DIAGNÓSTICO PRELIMINAR**\n\nSe requiere una revisión detallada del vehículo.\n\n**¿Deseas proceder con la reparación?**\nResponde con: 'ok', 'perfecto', 'adelante', 'claro', 'dale' o 'vamos'"
+    rag_info = f"\nInformación técnica:\n{rag_context}" if rag_context and rag_context.strip() else ""
+    prompt = DIAGNOSTICO_GENERAR_DIAGNOSTICO.format(sintomas=sintomas, rag_context=rag_info)
+    respuesta = _generar_respuesta_ia(prompt)
+    return respuesta or "📋 **DIAGNÓSTICO PRELIMINAR**\n\nRevisión detallada requerida.\n\n**¿Deseas proceder?**\nResponde: 'ok', 'perfecto', 'adelante'"
 
 
 def _generar_confirmacion_diagnostico(pieza_dañada: str = "", respuesta_cliente: str = "", es_refinado: bool = False) -> str:
-    """Genera una confirmación natural del diagnóstico aceptado + pregunta de agendamiento.
+    """Genera confirmación breve del diagnóstico + pregunta de agendamiento."""
+    pieza_info = f"para la reparación de {pieza_dañada}" if pieza_dañada else ""
+    cliente_info = f"Cliente confirmó con: '{respuesta_cliente}'" if respuesta_cliente else "Cliente confirmó"
 
-    IMPORTANTE: Esta NO es una respuesta de saludo inicial. El cliente ya ha confirmado un diagnóstico
-    (preliminar o refinado) y ahora procedemos con el agendamiento.
-    """
-    tipo_diagnostico = "diagnóstico refinado" if es_refinado else "diagnóstico preliminar"
-
-    system = f"""Eres un mecánico profesional. El cliente acaba de confirmar el {tipo_diagnostico} y DECIDIÓ PROCEDER con la reparación.
-
-🚨 ACLARACIÓN CRÍTICA:
-- NO es inicio de conversación - estamos en MEDIO de la conversación
-- NO saludos genéricos ("Hola", "Buen día", "Me alegra", etc.)
-- NO explicaciones largas del diagnóstico (ya fue presentado)
-- SÍ reconoce su confirmación de forma BREVE y DIRECTA
-- SÍ pregunta INMEDIATAMENTE por fecha/hora de agendamiento
-
-ESTRUCTURA DE TU RESPUESTA:
-1. Línea 1: Confirmación breve (ej: "✅ Perfecto, procederemos")
-2. Línea 2: Si hay info sobre qué se repara: menciónalo brevemente
-3. Línea 3+: PREGUNTA DIRECTA por fecha y hora de agendamiento
-
-
-EVITAR:
-❌ "¡Hola! Me alegra que hayas decidido..."
-❌ "Basándome en el diagnóstico que hicimos..."
-❌ Saludos, pequeñas charlas, o repetir el diagnóstico"""
-
-    contexto = f"Cliente confirmó con: '{respuesta_cliente}'" if respuesta_cliente else "Cliente confirmó el diagnóstico"
-    pieza_text = f"para la reparación de {pieza_dañada}" if pieza_dañada else ""
-    prompt = f"{contexto}. {pieza_text}"
-
-    respuesta = _generar_respuesta_ia(system, prompt)
-    return respuesta or f"✅ Perfecto, procederemos con la reparación.\n\n¿Cuándo te gustaría agendar la cita? Por favor, dime la fecha y hora preferida."
+    prompt = DIAGNOSTICO_CONFIRMACION.format(respuesta_cliente=cliente_info, pieza_info=pieza_info)
+    respuesta = _generar_respuesta_ia(prompt)
+    return respuesta or "✅ Perfecto, procederemos.\n\n¿Cuándo quieres agendar? Fecha y hora preferida."
 
 
 def _detectar_intension_agendar(ultimo_mensaje: str) -> bool:

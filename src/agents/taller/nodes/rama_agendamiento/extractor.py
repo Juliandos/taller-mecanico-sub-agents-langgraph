@@ -7,6 +7,7 @@ from langchain_core.messages import AIMessage
 from pydantic import BaseModel, Field
 from agents.taller.state import TallerState
 from agents.taller.nodes.rama_agendamiento.simulated_availability import is_holiday
+from agents.taller.prompts import AGENDAMIENTO_EXTRACTOR_DATOS
 
 class AppointmentData(BaseModel):
     """Datos extraídos para agendar cita."""
@@ -93,13 +94,40 @@ def _parse_date_string(date_str: str, rejected_date: str = None) -> datetime:
             except:
                 return None
 
-    # Caso 4: "martes 19" o "miercoles 20"
+    # Caso 4: "martes 19" o "miercoles 20" con día de la semana
+    weekdays = {
+        "lunes": 0, "martes": 1, "miercoles": 2, "miércoles": 2,
+        "jueves": 3, "viernes": 4, "sabado": 5, "sábado": 5, "domingo": 6
+    }
     day_match = re.search(r"(\d{1,2})", date_lower)
     if day_match:
         day = int(day_match.group(1))
         try:
-            return datetime(2026, 5, day)
+            target_date = datetime(2026, 5, day)
+            # Validar día de la semana si fue mencionado
+            for weekday_name, weekday_num in weekdays.items():
+                if weekday_name in date_lower:
+                    if target_date.weekday() != weekday_num:
+                        # Si no coincide el día de semana, buscar en próximos/anteriores 7 días
+                        for offset in range(-7, 8):
+                            check_date = target_date + timedelta(days=offset)
+                            if check_date.weekday() == weekday_num and check_date.day in [day, day-7, day+7]:
+                                return check_date
+                        return None  # No se encontró coincidencia válida
+                    break
+            return target_date
         except:
+            return None
+
+    # Caso 5: Solo día de la semana "martes" o "miercoles"
+    for weekday_name, weekday_num in weekdays.items():
+        if date_lower.strip() == weekday_name or weekday_name in date_lower.split():
+            # Encuentra el próximo día con ese nombre
+            today = TODAY
+            for days_ahead in range(1, 8):
+                future_date = today + timedelta(days=days_ahead)
+                if future_date.weekday() == weekday_num:
+                    return future_date
             return None
 
     return None
@@ -313,18 +341,8 @@ def extractor_datos(state: TallerState) -> dict:
 
     # Extraer datos del historial usando LLM estructurado
     try:
-        system_prompt = """Eres un asistente que extrae información de agendamiento de una conversación.
-
-Extrae SOLO si están explícitamente mencionados en la conversación:
-- nombre: nombre completo del cliente
-- phone: número de teléfono (cualquier secuencia de dígitos)
-- preferred_date: fecha preferida mencionada (ej: mañana, 2026-05-15, próxima semana)
-- preferred_time: hora preferida mencionada (ej: 10:00, por la tarde, por la mañana)
-
-Si NO encuentras algo, retorna un string vacío "" para ese campo. NO uses valores por defecto."""
-
         # Convertir mensajes a formato compatible
-        formatted_messages = [("system", system_prompt)]
+        formatted_messages = [("system", AGENDAMIENTO_EXTRACTOR_DATOS)]
         for m in messages:
             if isinstance(m, dict):
                 role = m.get("type", "user")
@@ -336,7 +354,11 @@ Si NO encuentras algo, retorna un string vacío "" para ese campo. NO uses valor
 
         schema = llm.invoke(formatted_messages)
 
-        print(f"[EXTRACTOR_DATOS] Extraído: nombre='{schema.customer_name}' | teléfono='{schema.phone}' | fecha='{schema.preferred_date}' | hora='{schema.preferred_time}'")
+        print(f"[EXTRACTOR_DATOS] ✓ LLM extrajo:")
+        print(f"  - nombre: '{schema.customer_name}'")
+        print(f"  - teléfono: '{schema.phone}'")
+        print(f"  - fecha: '{schema.preferred_date}'")
+        print(f"  - hora: '{schema.preferred_time}'")
 
         # Obtener la fecha rechazada anterior (si la hay)
         rejected_date = state.get("rejected_date", None)
@@ -349,6 +371,14 @@ Si NO encuentras algo, retorna un string vacío "" para ese campo. NO uses valor
             missing_fields.append("phone")
         if not schema.preferred_date or schema.preferred_date.strip() == "":
             missing_fields.append("preferred_date")
+        else:
+            # Log de parseo de fecha
+            fecha_parsed = _parse_date_string(schema.preferred_date, rejected_date)
+            if fecha_parsed:
+                print(f"[EXTRACTOR_DATOS] ✓ Fecha parseada: '{schema.preferred_date}' → {fecha_parsed.strftime('%Y-%m-%d %A')}")
+            else:
+                print(f"[EXTRACTOR_DATOS] ⚠️ NO se pudo parsear fecha: '{schema.preferred_date}'")
+
         if not schema.preferred_time or schema.preferred_time.strip() == "":
             missing_fields.append("preferred_time")
         else:
