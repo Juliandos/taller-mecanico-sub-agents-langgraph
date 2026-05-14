@@ -327,6 +327,7 @@ COLOMBIAN_HOLIDAYS_2026 = {
     "2026-04-01": "Miércoles Santo",
     "2026-05-01": "Día del Trabajo",
     "2026-05-14": "Ascensión del Señor",
+    "2026-05-18": "Lunes de Pentecostés",
     "2026-05-25": "Corpus Christi",
     "2026-06-01": "Sagrado Corazón",
     "2026-06-08": "Lunes Pentecostés (trasladado)",

@@ -77,7 +77,7 @@ def orquestador(state: TallerState) -> dict:
         "cómo", "como", "qué", "que", "horario", "horarios",
         "precio", "costo", "misión", "visión", "quiénes", "teléfono",
         "dirección", "garantía", "servicio", "equipo", "información",
-        "¿qué", "¿quién", "¿dónde", "¿cuándo", "¿cómo", "¿por qué", "¿cual", "¿cuál", ,
+        "¿qué", "¿quién", "¿dónde", "¿cuándo", "¿cómo", "¿por qué", "¿cual", "¿cuál",
     ]
 
     # Detectar y contar

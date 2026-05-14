@@ -14,10 +14,8 @@ from agents.taller.nodes.rama_diagnostico.node import (
     route_diagnostico,
 )
 from agents.taller.nodes.rama_agendamiento.extractor import extractor_datos
-from agents.taller.nodes.rama_agendamiento.pedir_datos import pedir_datos_faltantes
-from agents.taller.nodes.rama_agendamiento.consultar_disponibilidad import consultar_disponibilidad_taller
+from agents.taller.nodes.rama_agendamiento.validador_responder import validador_responder, route_validador
 from agents.taller.nodes.rama_agendamiento.booking_agent import booking_agent
-from agents.taller.nodes.rama_agendamiento.route_booking import route_agendamiento
 from agents.taller.nodes.nodo_faq.node import nodo_faq, route_faq
 from agents.taller.nodes.agregador.node import agregador
 
@@ -34,10 +32,9 @@ def make_graph():
     builder.add_node("evaluador_pieza_dañada", evaluador_pieza_dañada)
     builder.add_node("buscar_rag_mecanica", buscar_rag_mecanica)
 
-    # Rama 2: Agendamiento (Ciclo interno: Extractor con RAG simulado)
+    # Rama 2: Agendamiento (Pipeline lineal: extractor → validador → booking)
     builder.add_node("extractor_datos", extractor_datos)
-    builder.add_node("pedir_datos_faltantes", pedir_datos_faltantes)
-    builder.add_node("consultar_disponibilidad_taller", consultar_disponibilidad_taller)
+    builder.add_node("validador_responder", validador_responder)
     builder.add_node("booking_agent", booking_agent)
 
     # Rama 3: FAQ
@@ -76,25 +73,21 @@ def make_graph():
     # React loop: si busca RAG, vuelve al evaluador
     builder.add_edge("buscar_rag_mecanica", "evaluador_pieza_dañada")
 
-    # ──── RAMA 2: AGENDAMIENTO (Ciclo interno: Extractor con RAG) ────
-    # Extractor extrae datos → route_agendamiento decide flujo
+    # ──── RAMA 2: AGENDAMIENTO (Pipeline lineal sin loops) ────
+    # Extractor → Validador → Booking
+    builder.add_edge("extractor_datos", "validador_responder")
+
+    # Validador decide: si todo está listo → booking, sino → esperar en agregador
     builder.add_conditional_edges(
-        "extractor_datos",
-        route_agendamiento,
+        "validador_responder",
+        route_validador,
         {
-            "pedir_datos_faltantes": "pedir_datos_faltantes",
-            "consultar_disponibilidad": "consultar_disponibilidad_taller",
             "booking_agent": "booking_agent",
+            "agregador": "agregador",
         }
     )
 
-    # Salida: pedir_datos_faltantes → agregador (esperar respuesta del usuario en siguiente turno)
-    builder.add_edge("pedir_datos_faltantes", "agregador")
-
-    # Ciclo interno: consultar disponibilidad vuelve a extractor
-    builder.add_edge("consultar_disponibilidad_taller", "extractor_datos")
-
-    # Salida final: booking_agent → agregador
+    # Booking → Agregador
     builder.add_edge("booking_agent", "agregador")
 
     # ──── RAMA 3: FAQ ────

@@ -165,6 +165,34 @@ def _detectar_cambio_sistema(ultimo_mensaje: str, sistema_anterior: str) -> bool
     return nuevo_sistema != sistema_anterior
 
 
+def _tiene_sintomas_explícitos(texto: str) -> bool:
+    """Verifica si el usuario describió síntomas reales, no solo mencionó tenerlos."""
+    texto_norm = _normalizar_texto(texto)
+
+    # Palabras que indican solo MENCIÓN de tener fallas, sin describir
+    sin_descripcion = ["tengo falla", "tengo problema", "tengo error", "hay un problema", "tiene falla"]
+
+    # Si el texto solo menciona tener falla pero pide describir después, no tiene síntomas
+    pide_describir = ["te las cuento", "voy a contarte", "te digo", "te paso", "te menciono", "le cuento"]
+
+    if any(sin_desc in texto_norm for sin_desc in sin_descripcion):
+        # Si menciona tener falla pero pide describirla después
+        if any(desc in texto_norm for desc in pide_describir):
+            return False
+
+    # Palabras que indican síntomas reales (sonidos, comportamientos, etc.)
+    sintomas_reales = [
+        "vibra", "ruido", "ruidoso", "sonido", "golpe", "tronido",
+        "no prende", "no enciende", "se apaga", "pierde potencia",
+        "humo", "quema", "olor", "fugas", "fuga", "pierde",
+        "lentamente", "lento", "rápido", "oscilante", "oscila",
+        "recalentamiento", "caliente", "frenada", "frena",
+        "cambios duros", "patina", "resbala", "tira", "desvía",
+    ]
+
+    return any(sintoma in texto_norm for sintoma in sintomas_reales)
+
+
 def evaluador_pieza_dañada(state: TallerState) -> dict:
     """
     ReAc Agent para diagnóstico.
@@ -211,6 +239,10 @@ def evaluador_pieza_dañada(state: TallerState) -> dict:
             last_msg = _extract_content(last.content).lower() if hasattr(last, "content") else ""
 
     print(f"[EVALUADOR] Último mensaje: '{last_msg}'")
+
+    # Verificar si tiene síntomas explícitos
+    tiene_sintomas = _tiene_sintomas_explícitos(last_msg)
+    print(f"[EVALUADOR] ¿Tiene síntomas explícitos? {tiene_sintomas}")
 
     confirm_keywords = [
         # Palabras/frases que claramente indican confirmación (SIN "si/sí")
@@ -310,9 +342,30 @@ Sé natural, amable y profesional."""
         print(f"[EVALUADOR] ✓ TURNO 2+: ({len(user_messages)} mensajes humanos)")
 
         # Verificar si el cliente VUELVE A INSISTIR sobre la cita en el segundo mensaje
-        # Si quiso agendar en TURNO 1 y vuelve a insistir, crear diagnóstico general
         if len(user_messages) == 2 and _detectar_intension_agendar(last_msg):
-            print("[EVALUADOR] 🎯 Cliente insiste en cita en segundo mensaje → Diagnóstico general")
+            # Solo generar diagnóstico si tiene síntomas reales descritos
+            if not tiene_sintomas:
+                print("[EVALUADOR] 📋 Cliente insiste en cita pero SIN síntomas descritos → PEDIR DESCRIPCIÓN")
+                system = """Eres un mecánico profesional amable. El cliente menciona tener problemas con su auto pero aún no ha descrito qué exactamente falla.
+Responde de forma conversacional pidiendo que describa:
+- Qué problema específico tiene (sonidos, comportamientos extraños, etc.)
+- Cuándo started (hace cuánto)
+- Con qué frecuencia ocurre
+
+Sé conversacional y cálido. NO uses listas formales, solo texto natural."""
+
+                respuesta = _generar_respuesta_ia(system, last_msg)
+                if not respuesta:
+                    respuesta = "Claro, quiero ayudarte. ¿Qué síntomas específicos tiene tu auto? Por ejemplo: ¿hay ruidos raros, vibración, pérdida de potencia, o qué sucede exactamente?"
+
+                new_state["messages"] = [AIMessage(content=respuesta)]
+                new_state["diagnostico_decision"] = "ir_a_agregador"
+                new_state["diagnostico_summary"] = respuesta
+                print(f"[EVALUADOR] Retornando: {list(new_state.keys())}")
+                return new_state
+
+            # Si SÍ tiene síntomas, generar diagnóstico general
+            print("[EVALUADOR] 🎯 Cliente insiste en cita CON síntomas → Diagnóstico general")
             system = """Eres un mecánico profesional. El cliente insiste en agendar sin hacer diagnóstico previo.
 Responde de forma amable y profesional ACEPTANDO su solicitud de diagnóstico general.
 Explica brevemente qué incluye una revisión de diagnóstico general y pregunta cuándo puede venir.

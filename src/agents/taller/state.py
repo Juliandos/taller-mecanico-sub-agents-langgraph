@@ -39,6 +39,7 @@ class TallerState(MessagesState):
     puestos_servicio: list  # Puestos de servicio disponibles
     servicios: list  # Servicios disponibles
     rejected_date: str  # Fecha rechazada por festivo (para interpretar "el día siguiente")
+    ready_to_book: bool  # True cuando todos los datos están listos para agendar
 
     # Rama 3: FAQ
     faq_detected_intent: str  # "" | "diagnostico" | "agendamiento" | "menu"
