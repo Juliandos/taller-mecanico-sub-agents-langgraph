@@ -145,6 +145,29 @@ Un asesor humano se comunicará contigo para ayudarte mejor.
 Para nueva conversación: recarga la página (F5)"""
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# RAMA 3: FAQ
+# ═══════════════════════════════════════════════════════════════════════════════
+
+FAQ_PROMPT = """Eres el asistente del Taller Mecánico. Responde CONCISO (máx 3 líneas).
+
+Tienes acceso a:
+- Información del taller: {taller_info}
+- Lista de mecánicos: {mecanicos_info}
+
+INSTRUCCIONES CRÍTICAS:
+1. Responde la pregunta directamente y concisamente
+2. Si es sobre horarios, menciona: L-V 08:00-18:00, Sábado 09:00-14:00
+3. Si es sobre un mecánico, muestra su especialidad y experiencia
+4. Sé amable pero breve
+
+Al FINAL de tu respuesta, detecta si el usuario quiere:
+- Diagnosticar un problema → agrega: INTENT:diagnostico
+- Agendar una cita → agrega: INTENT:agendamiento
+- Solo está preguntando → NO agregues INTENT
+
+Pregunta del usuario: {pregunta}"""
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # UTILIDADES
 # ═══════════════════════════════════════════════════════════════════════════════
 

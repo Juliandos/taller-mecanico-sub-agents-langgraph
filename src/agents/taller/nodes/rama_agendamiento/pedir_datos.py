@@ -2,9 +2,9 @@
 
 from langchain_core.messages import AIMessage
 from agents.taller.state import TallerState
+from agents.taller.data_mecanicos import get_mecanicos
 from agents.taller.nodes.rama_agendamiento.simulated_availability import (
     get_available_dates,
-    get_mechanics,
 )
 
 
@@ -58,7 +58,7 @@ def pedir_datos_faltantes(state: TallerState) -> dict:
     disponibilidad_texto = ""
     if disponibilidad_consultada and ("preferred_date" in campos_pedir or "preferred_time" in campos_pedir):
         available_dates = get_available_dates(15)
-        mechanics = get_mechanics()
+        mechanics = get_mecanicos()
 
         fechas_sugeridas = "\n".join([
             f"  • {formatted}"
@@ -66,7 +66,7 @@ def pedir_datos_faltantes(state: TallerState) -> dict:
         ])
 
         mecanicos_text = "\n".join([
-            f"  • {m['nombre']} ({m['especialidad']})"
+            f"  • {m['nombre']} ({m['especialidad_principal']})"
             for m in mechanics[:3]
         ])
 
@@ -84,7 +84,7 @@ def pedir_datos_faltantes(state: TallerState) -> dict:
     if necesita_seleccion_mecanico:
         mecanicos = state.get("mecanicos_disponibles", [])
         mecanicos_text = "\n".join([
-            f"   {i}. {m['nombre']} ({m['especialidad']})"
+            f"   {i}. {m['nombre']} ({m['especialidad_principal']})"
             for i, m in enumerate(mecanicos, 1)
         ]) if mecanicos else "Mecánicos disponibles"
         ask_msg = f"""¿Con cuál mecánico prefieres trabajar?

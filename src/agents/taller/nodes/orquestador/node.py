@@ -66,9 +66,18 @@ def orquestador(state: TallerState) -> dict:
         "cita", "citas", "agendar", "agend", "agenda", "agendada",
         "reserva", "reserv", "reservación", "reservar",
         "appointment", "booking", "book", "schedule", "scheduled",
-        "disponibilidad", "disponible", "horario", "horarios", "turno",
+        "disponibilidad", "disponible", "turno",
         "programar", "programación", "fecha", "hora",
         "necesito cita", "quiero cita", "dame cita",
+    ]
+
+    # Palabras clave para preguntas FAQ
+    faq_keywords = [
+        "cuándo", "cuando", "dónde", "donde", "quién", "quien",
+        "cómo", "como", "qué", "que", "horario", "horarios",
+        "precio", "costo", "misión", "visión", "quiénes", "teléfono",
+        "dirección", "garantía", "servicio", "equipo", "información",
+        "¿qué", "¿quién", "¿dónde", "¿cuándo", "¿cómo", "¿por qué", "¿cual", "¿cuál", ,
     ]
 
     # Detectar y contar
@@ -82,6 +91,11 @@ def orquestador(state: TallerState) -> dict:
         new_state["booking_attempts"] = booking_attempts
         print(f"[ORQUESTADOR] 📅 Solicitud de cita detectada (intento {booking_attempts})")
 
+    if normalize_keywords(last_message, faq_keywords):
+        faq_attempts = state.get("faq_attempts", 0) + 1
+        new_state["faq_attempts"] = faq_attempts
+        print(f"[ORQUESTADOR] ❓ Pregunta FAQ detectada (intento {faq_attempts})")
+
     if new_state:
         print(f"[ORQUESTADOR] Contadores actualizados: {new_state}")
     return new_state
@@ -92,6 +106,7 @@ def route_orchestrator(state: TallerState) -> str:
     FUNCIÓN DE ROUTEO: Lee el estado y decide la ruta.
 
     Retorna:
+    - "rama_faq" si faq_attempts >= 1 (preguntas sobre taller/mecánicos)
     - "handoff" si human_requests >= 2
     - "rama_agendamiento" si booking_attempts >= 2 sin diagnóstico
     - "rama_agendamiento" si diagnóstico confirmado
@@ -101,6 +116,7 @@ def route_orchestrator(state: TallerState) -> str:
     client_confirmed = state.get("client_confirmed_diagnosis", False)
     booking_attempts = state.get("booking_attempts", 0)
     human_requests = state.get("human_requests", 0)
+    faq_attempts = state.get("faq_attempts", 0)
     damaged_part = state.get("damaged_part", "")
 
     print(f"\n[ROUTE_ORCHESTRATOR] ══════════════════════════════")
@@ -108,7 +124,13 @@ def route_orchestrator(state: TallerState) -> str:
     print(f"  - client_confirmed_diagnosis: {client_confirmed}")
     print(f"  - booking_attempts: {booking_attempts}")
     print(f"  - human_requests: {human_requests}")
+    print(f"  - faq_attempts: {faq_attempts}")
     print(f"  - damaged_part: {damaged_part}")
+
+    # Si detecta pregunta FAQ
+    if faq_attempts >= 1:
+        print(f"[ROUTE_ORCHESTRATOR] ❓ RUTEANDO A: rama_faq (pregunta FAQ)")
+        return "rama_faq"
 
     # Si pide humano por segunda+ vez
     if human_requests >= 2:

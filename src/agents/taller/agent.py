@@ -18,6 +18,7 @@ from agents.taller.nodes.rama_agendamiento.pedir_datos import pedir_datos_faltan
 from agents.taller.nodes.rama_agendamiento.consultar_disponibilidad import consultar_disponibilidad_taller
 from agents.taller.nodes.rama_agendamiento.booking_agent import booking_agent
 from agents.taller.nodes.rama_agendamiento.route_booking import route_agendamiento
+from agents.taller.nodes.nodo_faq.node import nodo_faq, route_faq
 from agents.taller.nodes.agregador.node import agregador
 
 
@@ -39,6 +40,9 @@ def make_graph():
     builder.add_node("consultar_disponibilidad_taller", consultar_disponibilidad_taller)
     builder.add_node("booking_agent", booking_agent)
 
+    # Rama 3: FAQ
+    builder.add_node("rama_faq", nodo_faq)
+
     # Agregador
     builder.add_node("agregador", agregador)
 
@@ -53,6 +57,7 @@ def make_graph():
         {
             "rama_diagnostico": "evaluador_pieza_dañada",
             "rama_agendamiento": "extractor_datos",
+            "rama_faq": "rama_faq",
             "handoff": "agregador",  # Transferencia directa a humano
         }
     )
@@ -91,6 +96,18 @@ def make_graph():
 
     # Salida final: booking_agent → agregador
     builder.add_edge("booking_agent", "agregador")
+
+    # ──── RAMA 3: FAQ ────
+    # FAQ → Enrutamiento condicional según intención detectada
+    builder.add_conditional_edges(
+        "rama_faq",
+        route_faq,
+        {
+            "evaluador_pieza_dañada": "evaluador_pieza_dañada",
+            "extractor_datos": "extractor_datos",
+            "agregador": "agregador",
+        }
+    )
 
     # ──── CONVERGENCIA ────
     # Agregador → END

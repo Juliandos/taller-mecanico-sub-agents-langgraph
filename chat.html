@@ -401,7 +401,39 @@
         // Inicializar
         loadThreadId();
         messageInput.focus();
-        addMessage('Hola 👋 Bienvenido al Taller Mecánico. Cuéntame qué problema tiene tu vehículo.', false);
+
+        // Mensaje inicial mejorado con diagrama de flujo
+        const mensajeInicial = `¡Hola! 👋 **Bienvenido a Taller Mecánico**
+
+**¿Qué necesitas?**
+
+\`\`\`
+┌─────────────────────────────────────────────────────┐
+│                   INICIO                             │
+│                                                      │
+│  ┌─→ 🔧 SÍNTOMA       ─→ DIAGNÓSTICO ─→ AGENDAMIENTO│
+│  │                                                   │
+│  ├─→ 📅 AGENDAR        ─→ AGENDAMIENTO             │
+│  │                                                   │
+│  ├─→ ❓ PREGUNTAS      ─→ FAQ ─┬→ MENÚ / DIAGNÓSTICO
+│  │                         │    │ / AGENDAMIENTO   │
+│  │                         └────┘                   │
+│  │                                                   │
+│  └─→ 📞 HUMANO        ─→ TRANSFERENCIA             │
+│                                                      │
+└─────────────────────────────────────────────────────┘
+\`\`\`
+
+**Opciones disponibles:**
+- 🔧 Describe un problema → Diagnóstico
+- 📅 Quiero cita → Agendamiento
+- 👨‍🔧 Conocer equipo → Preguntas
+- ❓ Dudas generales → FAQ
+- 📞 Hablar asesor → Transferencia
+
+**¿Por dónde empezamos?**`;
+
+        addMessage(mensajeInicial, false);
     </script>
 </body>
 </html>

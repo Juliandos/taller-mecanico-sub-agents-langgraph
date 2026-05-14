@@ -3,14 +3,14 @@
 from datetime import datetime, timedelta
 from typing import Dict, List, Tuple
 
+from agents.taller.data_mecanicos import COLOMBIAN_HOLIDAYS_2026
+
 # Hoy es 11 de mayo de 2026 (domingo)
 # Simulamos disponibilidad para los próximos 15 días (11-26 mayo)
 TODAY = datetime(2026, 5, 11)
 
-# Festivos colombianos en el rango de 15 días
-COLOMBIAN_HOLIDAYS = {
-    "2026-05-18": "Lunes de Pentecostés"  # Lunes 18 mayo
-}
+# Usar festivos centralizados de data_mecanicos
+COLOMBIAN_HOLIDAYS = COLOMBIAN_HOLIDAYS_2026
 
 
 def is_holiday(date: datetime) -> bool:

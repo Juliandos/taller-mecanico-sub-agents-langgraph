@@ -40,6 +40,10 @@ class TallerState(MessagesState):
     servicios: list  # Servicios disponibles
     rejected_date: str  # Fecha rechazada por festivo (para interpretar "el día siguiente")
 
+    # Rama 3: FAQ
+    faq_detected_intent: str  # "" | "diagnostico" | "agendamiento" | "menu"
+    faq_attempts: int  # Contador de intentos en FAQ para evitar loops
+
     # Control
     requires_human: bool
     human_transfer_requests: int  # Contador de cuántas veces solicita transferencia a humano

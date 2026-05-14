@@ -1,8 +1,8 @@
 """Consultar disponibilidad de taller - RAG simulado de horarios y servicios."""
 
 from agents.taller.state import TallerState
+from agents.taller.data_mecanicos import get_mecanicos
 from agents.taller.nodes.rama_agendamiento.simulated_availability import (
-    get_mechanics,
     get_service_areas,
     get_available_dates,
     get_available_slots_for_date,
@@ -21,14 +21,14 @@ def consultar_disponibilidad_taller(state: TallerState) -> dict:
     """
     print(f"[CONSULTAR_DISPONIBILIDAD] Consultando disponibilidad del taller...")
 
-    # Obtener datos simulados
-    mechanics = get_mechanics()
+    # Obtener datos centralizados
+    mechanics = get_mecanicos()
     service_areas = get_service_areas()
     available_dates = get_available_dates(15)
 
     # Formatear mecánicos
     mecanicos_info = "\n".join([
-        f"- {m['nombre']} ({m['especialidad']}) - {m['experiencia']} de experiencia"
+        f"- {m['nombre']} ({m['especialidad_principal']}) - {m['experiencia_anos']} años de experiencia"
         for m in mechanics
     ])
 
@@ -46,7 +46,7 @@ def consultar_disponibilidad_taller(state: TallerState) -> dict:
 
     # Construir pregunta de selección de mecánico
     mecanicos_numerados = "\n".join([
-        f"   {i}. {m['nombre']} ({m['especialidad']})"
+        f"   {i}. {m['nombre']} ({m['especialidad_principal']})"
         for i, m in enumerate(mechanics, 1)
     ])
 

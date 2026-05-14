@@ -553,7 +553,168 @@ Deployment:
 
 ---
 
-**Documento generado:** 11 de Mayo 2026  
-**Versión del proyecto:** 1.1.0  
-**Estado:** Funcional, listo para producción  
+## 8. FUTURO: NODO FAQ & PREGUNTAS DE MECÁNICA (EN DESARROLLO)
+
+### 🎯 Objetivo
+Crear un nodo que maneje preguntas sobre mecánica y el taller, proporcionando información útil sin interrumpir el flujo principal de diagnóstico/agendamiento.
+
+### 📋 Funcionalidades Planeadas
+
+**A. Preguntas sobre el Taller:**
+- Información general: "¿Quiénes son?", "¿Dónde están?", "¿Cuál es su misión?"
+- Horarios: "¿A qué hora abren?", "¿Atienden sábado?"
+- Contacto: "¿Teléfono?", "¿Email?", "¿WhatsApp?"
+- Ubicación: "¿Dirección?", "¿Cómo llego?"
+- Servicios: "¿Qué servicios ofrecen?", "¿Garantía?"
+
+**B. Preguntas sobre el Equipo:**
+- "¿Quién es el mecánico de motor?"
+- "¿Quién atiende de eléctrica?"
+- Especialidades y experiencia
+- Disponibilidad de cada mecánico
+
+**C. Preguntas de Mecánica General:**
+- "¿Cuánto cuesta un cambio de bujías?"
+- "¿Cuánto tiempo toma una reparación?"
+- "¿Qué es el diagnóstico completo?"
+- Explicaciones técnicas básicas
+
+### 🏗️ Arquitectura del Nodo FAQ
+
+```
+USUARIO: "¿Cuándo abren?" / "¿Quién es Juan García?" / etc.
+    ↓
+ORQUESTADOR: Detecta intención = FAQ
+    ↓
+NODO_FAQ:
+├─ Reconoce categoría (taller/equipo/mecánica)
+├─ Busca en base de conocimiento
+├─ Genera respuesta clara y concisa
+└─ Retorna: {category, answer, action}
+    ↓
+ORQUESTADOR: Decide según resultado:
+├─ Si es pregunta de taller → Responder y volver a menú inicial
+├─ Si es sobre mecánico → Responder y preguntar "¿Agendas con él?"
+├─ Si es pregunta de mecánica → Responder y preguntar "¿Necesitas diagnosticar?"
+└─ Si no entiende → Redirigir a diagnóstico/agendamiento
+```
+
+### 📊 Estado (action) que Retorna
+
+```python
+{
+    "tipo": "faq",  # Identifica como pregunta FAQ
+    "categoria": "taller" | "equipo" | "mecanica",
+    "respuesta": "...",  # Texto a mostrar al usuario
+    "siguiente_accion": "menu" | "diagnostico" | "agendamiento" | "consultar_mecanico"
+}
+```
+
+### 🔄 Integración con Orquestador
+
+En `orquestador/node.py`:
+
+```python
+def route_orchestrator(state: TallerState) -> str:
+    # Detectar si es pregunta FAQ primero
+    if _es_pregunta_faq(ultimo_mensaje):
+        return "nodo_faq"
+    
+    # Si no es FAQ, continuar con diagnóstico/agendamiento
+    ...
+
+def route_faq(state: TallerState) -> str:
+    """Router después de FAQ"""
+    siguiente = state.get("siguiente_accion", "menu")
+    
+    if siguiente == "menu":
+        return "agregador"  # Mostrar menú inicial
+    elif siguiente == "diagnostico":
+        return "rama_diagnostico"
+    elif siguiente == "agendamiento":
+        return "rama_agendamiento"
+    # etc.
+```
+
+### 💾 Base de Conocimiento (Knowledge Base)
+
+```python
+TALLER_INFO = {
+    "nombre": "Taller Mecánico Auto Partes Pro",
+    "misión": "Proporcionar servicio de diagnóstico y reparación...",
+    "visión": "Ser el taller de confianza de la región...",
+    "horarios": {
+        "lunes_viernes": "08:00 - 18:00",
+        "sabado": "09:00 - 14:00",
+        "domingo": "CERRADO"
+    },
+    "contacto": {
+        "telefono": "300-AUTO-PRO (300-288-6776)",
+        "whatsapp": "+57 300-123-4567",
+        "email": "citas@tallerautopartespro.com",
+        "ubicacion": "Cra. 5 # 12-34, Bogotá"
+    },
+    "equipo": [
+        {
+            "nombre": "Juan García",
+            "especialidad": "Motor, suspensión, transmisión",
+            "experiencia": "15 años",
+            "descripcion": "Experto en diagnóstico..."
+        },
+        # ... más mecánicos
+    ]
+}
+```
+
+### ✨ Ejemplo de Conversación
+
+```
+Usuario: "¿Quién es Juan García?"
+
+Bot: "Juan García es nuestro especialista en motor y suspensión 
+     con 15 años de experiencia. Es muy confiable y preciso en 
+     sus diagnósticos.
+     
+     ¿Te gustaría agendar una cita con Juan? 👨‍🔧"
+
+Usuario: "Sí, quiero agendar con Juan"
+
+Bot: [Redirige a rama_agendamiento con selected_mechanic = "Juan García"]
+```
+
+### 🚀 Implementación (Roadmap)
+
+**Fase 1: Estructura Base**
+- [ ] Crear `src/agents/taller/nodes/nodo_faq/` 
+- [ ] Implementar detección de preguntas FAQ
+- [ ] Crear base de conocimiento
+
+**Fase 2: Integración**
+- [ ] Conectar con orquestador
+- [ ] Router para post-FAQ
+- [ ] Retorno correcto de estados
+
+**Fase 3: Mejoras**
+- [ ] Búsqueda semántica (RAG) para preguntas
+- [ ] Respuestas más personalizadas
+- [ ] Análisis de intención mejorado
+
+**Fase 4: Producción**
+- [ ] Testing completo
+- [ ] Documentación
+- [ ] Deploy
+
+### 🎯 Principios de Diseño
+
+1. **Claro y Conciso:** Respuestas breves, máximo 2-3 líneas
+2. **Amable:** Tono profesional pero cercano
+3. **Impulsador:** Siempre guiar hacia diagnóstico/agendamiento
+4. **No Interrumpidor:** Si cliente está en flujo, no interrumpir con FAQ
+5. **Informativo:** Proporcionar datos útiles sin tecnicismos innecesarios
+
+---
+
+**Documento generado:** 13 de Mayo 2026  
+**Versión del proyecto:** 1.2.0 (con plan FAQ)  
+**Estado:** Funcional, futuras mejoras planeadas  
 **Autor:** Julian David Ortega Solarte
