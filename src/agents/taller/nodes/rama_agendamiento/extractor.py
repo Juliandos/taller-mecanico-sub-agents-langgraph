@@ -213,10 +213,13 @@ def _detectar_seleccion_mecanico(last_human_msg: str, mechanics_list: list) -> t
     msg_lower = str(last_human_msg).lower().strip()
     msg_lower = msg_lower.replace("á", "a").replace("é", "e").replace("í", "i").replace("ó", "o").replace("ú", "u")
 
-    # Palabras de aceptación (selecciona el primero/recomendado)
+    # Palabras de aceptación (selecciona el primero/recomendado) — solo frases que claramente
+    # indican "sin preferencia". No incluir palabras genéricas como "ok", "bien", "claro"
+    # porque también se usan para confirmar el diagnóstico y causarían falsos positivos.
     accept_keywords = [
-        "cualquiera", "ok", "bien", "esta bien", "el recomendado", "el primero",
-        "me parece bien", "esta ok", "listo", "vale", "claro", "me gusta", "perfecto"
+        "cualquiera", "cualquier", "el recomendado", "el primero",
+        "me da igual", "no importa", "el que sea", "sin preferencia",
+        "me es igual", "lo que recomienden", "el que tengan", "indiferente",
     ]
     for keyword in accept_keywords:
         if keyword in msg_lower:
@@ -259,6 +262,67 @@ def extractor_datos(state: TallerState) -> dict:
 
     print("[EXTRACTOR_DATOS] Extrayendo información de agendamiento...")
 
+    # Si la cita ya fue confirmada, detectar si el usuario quiere corregir
+    if state.get("booking_confirmed", False):
+        correction_keywords = [
+            "equivoqué", "equivoque", "error", "cambiar", "cambio", "modificar",
+            "corrijo", "corregir", "corrección", "correccion", "actualizar",
+            "número mal", "celular mal", "hora mal", "fecha mal",
+            "me equivoqué", "quiero cambiar", "quiero corregir", "quiero modificar",
+            "está mal", "esta mal", "fue un error", "incorrecto", "incorrecta",
+            "dije",
+        ]
+        last_text = ""
+        if messages:
+            last = messages[-1]
+            last_text = (last.get("content", "") if isinstance(last, dict) else getattr(last, "content", ""))
+            if isinstance(last_text, list):
+                last_text = " ".join(str(c) for c in last_text)
+            last_text = str(last_text).lower()
+
+        if any(kw in last_text for kw in correction_keywords):
+            # Intentar detectar si es una corrección específica de mecánico
+            mecanicos_list = state.get("mecanicos_disponibles", [])
+            if not mecanicos_list:
+                from agents.taller.data_mecanicos import get_mecanicos
+                mecanicos_list = get_mecanicos()
+
+            detected_mech, detected_area = _detectar_seleccion_mecanico(last_text, mecanicos_list)
+            if detected_mech:
+                print(f"[EXTRACTOR_DATOS] 🔄 Corrección de mecánico → {detected_mech}")
+                # Preservar fecha/hora de la cita anterior (el booking_agent las guarda
+                # como "preferred_date"/"preferred_time" y también como "date"/"time")
+                existing = state.get("appointment_data", {})
+                preserved_date = existing.get("preferred_date") or existing.get("date", "")
+                preserved_time = existing.get("preferred_time") or existing.get("time", "")
+                return {
+                    "messages": [AIMessage(content=(
+                        f"Entendido, ya tengo tus datos. Voy a actualizar el mecánico a "
+                        f"**{detected_mech}** manteniendo la fecha, hora y demás datos igual."
+                    ))],
+                    "booking_confirmed": False,
+                    "selected_mechanic": detected_mech,
+                    "selected_area": detected_area or "Diagnóstico",
+                    "missing_fields": [],
+                    "appointment_data": {
+                        "preferred_date": preserved_date,
+                        "preferred_time": preserved_time,
+                    },
+                }
+
+            # Corrección general (nombre, teléfono, fecha, hora) → resetear campos
+            print("[EXTRACTOR_DATOS] 🔄 Corrección general → reiniciando datos de cita")
+            return {
+                "booking_confirmed": False,
+                "ready_to_book": False,
+                "appointment_data": {"preferred_date": "", "preferred_time": ""},
+                "phone": "",
+                "missing_fields": [],
+            }
+
+        print("[EXTRACTOR_DATOS] ✅ Cita ya confirmada, ignorando")
+        return {}
+
     # Si ya tenemos datos completos, no extraemos (verificar TODOS los datos)
     appointment_data = state.get("appointment_data", {})
     preferred_date = appointment_data.get("preferred_date", "")
@@ -273,7 +337,12 @@ def extractor_datos(state: TallerState) -> dict:
         mecanicos_disponibles = state.get("mecanicos_disponibles", [])
         missing_fields = []
 
-        if mecanicos_disponibles and not selected_mechanic:
+        # Poblar lista de mecánicos si aún no está disponible
+        if not mecanicos_disponibles:
+            from agents.taller.data_mecanicos import get_mecanicos
+            mecanicos_disponibles = get_mecanicos()
+
+        if not selected_mechanic:
             # Intentar detectar selección de mecánico del último mensaje
             last_message = ""
             if messages:
@@ -290,10 +359,8 @@ def extractor_datos(state: TallerState) -> dict:
                             last_message = item.get("text", "")
                             break
                     else:
-                        # Si no encontramos texto en multimodal, usar vacío
                         last_message = ""
                 else:
-                    # Asegurar que es string
                     last_message = str(last_message) if last_message else ""
 
             detected_mechanic, detected_area = _detectar_seleccion_mecanico(last_message, mecanicos_disponibles)
@@ -341,9 +408,22 @@ def extractor_datos(state: TallerState) -> dict:
 
     # Extraer datos del historial usando LLM estructurado
     try:
+        # En modo corrección (nombre presente, fecha/hora borradas por corrección o festivo),
+        # usar solo los últimos 2 mensajes para evitar extraer datos obsoletos del historial.
+        rejected_date_flag = state.get("rejected_date", "")
+        is_correction_recovery = bool(
+            customer_name and
+            not appointment_data.get("preferred_date") and
+            not appointment_data.get("preferred_time") and
+            (not phone or rejected_date_flag)
+        )
+        messages_to_use = messages[-2:] if is_correction_recovery else messages
+        if is_correction_recovery:
+            print(f"[EXTRACTOR_DATOS] 🔄 Modo corrección: usando solo los últimos {len(messages_to_use)} mensajes (rejected_date={rejected_date_flag!r})")
+
         # Convertir mensajes a formato compatible
         formatted_messages = [("system", AGENDAMIENTO_EXTRACTOR_DATOS)]
-        for m in messages:
+        for m in messages_to_use:
             if isinstance(m, dict):
                 role = m.get("type", "user")
                 content = m.get("content", "")
@@ -400,12 +480,17 @@ def extractor_datos(state: TallerState) -> dict:
                 elif error_type == "invalid_hour":
                     missing_fields.append("preferred_time_invalid")
 
-        # Detectar selección de mecánico si disponibilidad ya fue consultada
+        # Detectar selección de mecánico
         selected_mechanic = state.get("selected_mechanic", "")
         selected_area = state.get("selected_area", "")
         mecanicos_disponibles = state.get("mecanicos_disponibles", [])
 
-        if mecanicos_disponibles and not selected_mechanic:
+        # Poblar lista de mecánicos si aún no está disponible
+        if not mecanicos_disponibles:
+            from agents.taller.data_mecanicos import get_mecanicos
+            mecanicos_disponibles = get_mecanicos()
+
+        if not selected_mechanic:
             # Intentar detectar selección de mecánico del último mensaje
             last_message = ""
             if messages:
@@ -472,6 +557,7 @@ def extractor_datos(state: TallerState) -> dict:
             "customer_name": schema.customer_name,
             "phone": schema.phone,
             "missing_fields": [],  # Limpiar missing_fields
+            "rejected_date": "",   # Limpiar flag de festivo ya resuelto
             "selected_mechanic": selected_mechanic,
             "selected_area": selected_area,
             "appointment_data": {

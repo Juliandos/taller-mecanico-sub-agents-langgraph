@@ -54,10 +54,13 @@ def booking_agent(state: TallerState) -> dict:
 ⚠️ Instrucciones:
 • Llega 15 minutos antes
 • Guarda tu confirmación
-• Cambios: 300-AUTO-PRO
+• Cambios urgentes: 300-AUTO-PRO
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-✅ OBJETIVO COMPLETADO - Para nueva conversación, recarga la página (F5)"""
+¿Algo está incorrecto? Puedes pedirme un cambio ahora mismo.
+Ejemplo: "quiero cambiar la fecha a..." o "cambia el mecánico a..."
+
+Para una nueva cita, recarga la página (F5) o inicia un nuevo chat."""
 
         print(f"[BOOKING_AGENT] ✅ {appointment_date} {appointment_time}")
 
@@ -70,6 +73,9 @@ def booking_agent(state: TallerState) -> dict:
             "phone": phone,
             "date": appointment_date,
             "time": appointment_time,
+            # Mantener claves "preferred_*" para que el flujo de corrección funcione
+            "preferred_date": appointment_date,
+            "preferred_time": appointment_time,
             "service": service,
             "mechanic": mechanic_name,
         }

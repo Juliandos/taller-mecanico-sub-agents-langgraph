@@ -48,6 +48,8 @@ class TallerState(MessagesState):
     # Control
     requires_human: bool
     human_transfer_requests: int  # Contador de cuántas veces solicita transferencia a humano
+    human_requests: int           # Contador usado por orquestador para detectar solicitudes de humano
+    booking_attempts: int         # Contador usado por orquestador para detectar insistencia en cita
     booking_confirmed: bool
 
     # Selección de mecánico y área de servicio
